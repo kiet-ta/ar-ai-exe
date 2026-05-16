@@ -102,6 +102,116 @@ flowchart TD
     S --> T["ZIP with GLB OBJ MTL texture previews notes"]
 ```
 
+## Implemented Backend MVP Flow
+
+```mermaid
+flowchart TD
+    A["POST /api/auth/demo-login"] --> B["Return bearer token"]
+    B --> C["POST /api/scan-sessions"]
+    C --> D["Create SQLite ScanSession"]
+    D --> E["POST /api/scan-sessions/{id}/upload-video"]
+    E --> F["Store raw_video.mp4 and metadata.json"]
+    F --> G["Queue BackgroundTasks processing"]
+    G --> H["Extract frames or write placeholder frame"]
+    H --> I["Generate mock shoe_base.glb"]
+    I --> J["Generate OBJ MTL texture and quality report"]
+    J --> K["Create ModelAsset"]
+    K --> L["GET /api/models/{id}"]
+    L --> M["POST /api/designs"]
+    M --> N["Store design_config.json separately"]
+    N --> O["POST /api/designs/{id}/export"]
+    O --> P["Copy final files and production notes"]
+    P --> Q["Create downloadable ZIP"]
+```
+
+## Implemented Scan Status Flow
+
+```mermaid
+stateDiagram-v2
+    [*] --> created
+    created --> uploaded: video and metadata saved
+    uploaded --> extracting_frames: automatic processing starts
+    extracting_frames --> reconstructing
+    reconstructing --> cleaning_mesh
+    cleaning_mesh --> uv_unwrapping
+    uv_unwrapping --> texture_baking
+    texture_baking --> exporting
+    exporting --> completed
+    extracting_frames --> failed
+    reconstructing --> failed
+    cleaning_mesh --> failed
+    uv_unwrapping --> failed
+    texture_baking --> failed
+    exporting --> failed
+    completed --> [*]
+    failed --> [*]
+```
+
+## Implemented Export Package Flow
+
+```mermaid
+flowchart TD
+    A["Saved Design"] --> B["Load ModelAsset"]
+    B --> C["Create export folder"]
+    C --> D["Copy final_shoe.glb"]
+    C --> E["Copy final_shoe.obj"]
+    C --> F["Copy final_shoe.mtl"]
+    C --> G["Copy final_texture.png"]
+    A --> H["Copy design_config.json"]
+    B --> I["Read scan metadata"]
+    I --> J["Write measurement_info.json"]
+    A --> K["Write production_notes.json"]
+    C --> L["Write preview images"]
+    D --> M["Zip package"]
+    E --> M
+    F --> M
+    G --> M
+    H --> M
+    J --> M
+    K --> M
+    L --> M
+```
+
+## Implemented Frontend Editor Flow
+
+```mermaid
+flowchart TD
+    A["Open Vite React app"] --> B["POST /api/auth/demo-login"]
+    B --> C["Paste scan session ID"]
+    C --> D["GET /api/scan-sessions/{id}"]
+    D --> E{"Has modelAssetId"}
+    E -->|"No"| F["Show scan status"]
+    E -->|"Yes"| G["GET /api/models/{model_id}"]
+    G --> H["Fetch protected GLB as blob URL"]
+    H --> I["Render GLB in React Three Fiber Canvas"]
+    I --> J["Edit base color"]
+    I --> K["Add sticker layer"]
+    I --> L["Add text layer"]
+    J --> M["Save design_config.json"]
+    K --> M
+    L --> M
+    M --> N["POST or PUT /api/designs"]
+    N --> O["POST /api/designs/{id}/export"]
+    O --> P["Download ZIP with bearer token"]
+```
+
+## Implemented Flutter Scanner Source Flow
+
+```mermaid
+flowchart TD
+    A["ScanSetupScreen"] --> B["Validate shoe metadata"]
+    B --> C["CameraScanScreen"]
+    C --> D["Camera preview with guide overlay"]
+    D --> E["Start recording"]
+    E --> F["Stop recording"]
+    F --> G["UploadProgressScreen"]
+    G --> H["POST /api/auth/demo-login"]
+    H --> I["POST /api/scan-sessions"]
+    I --> J["Upload MP4 and metadata"]
+    J --> K["ScanResultScreen"]
+    K --> L["Show scan session ID and status"]
+```
+
 ## Planned Auth And Demo Login Flow
 
 ```mermaid

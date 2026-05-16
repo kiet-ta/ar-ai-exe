@@ -24,6 +24,9 @@ class Settings(BaseSettings):
 
     storage_root: Path = Path("storage")
     database_url: str = "sqlite:///./storage/app.db"
+    demo_access_token: str = "local-demo-token-change-me"
+    demo_user_email: str = "demo@shoe-customizer.local"
+    max_upload_size_mb: int = 250
 
     enable_real_reconstruction: bool = False
     colmap_bin: str = "colmap"

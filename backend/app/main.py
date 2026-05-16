@@ -3,8 +3,11 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.api import auth, designs, exports, models, scan_sessions
 from app.core.config import get_settings
 from app.core.storage import ensure_storage_directories
+from app.db.database import Base, engine
+from app import models as _models  # noqa: F401
 
 
 settings = get_settings()
@@ -13,6 +16,7 @@ settings = get_settings()
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     ensure_storage_directories(settings)
+    Base.metadata.create_all(bind=engine)
     yield
 
 
@@ -29,6 +33,12 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+app.include_router(auth.router, prefix=settings.api_prefix)
+app.include_router(scan_sessions.router, prefix=settings.api_prefix)
+app.include_router(models.router, prefix=settings.api_prefix)
+app.include_router(designs.router, prefix=settings.api_prefix)
+app.include_router(exports.router, prefix=settings.api_prefix)
 
 
 @app.get("/health", tags=["system"])
