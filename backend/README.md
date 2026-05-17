@@ -65,7 +65,8 @@ The demo token is for local MVP use only. Replace `DEMO_ACCESS_TOKEN` and disabl
 Current backend support includes:
 
 - Demo auth and current-user lookup.
-- SQLite persistence for users, scan sessions, model assets, designs, and export packages.
+- SQLAlchemy persistence for users, scan sessions, model assets, designs, and export packages.
+- Neon Postgres support for cloud database deployment.
 - Scan session creation.
 - MP4 upload with metadata validation.
 - Automatic background processing after upload.
@@ -83,11 +84,43 @@ Important values:
 ```text
 STORAGE_ROOT=storage
 DATABASE_URL=sqlite:///./storage/app.db
+DATABASE_AUTO_CREATE_TABLES=true
 ENABLE_REAL_RECONSTRUCTION=false
 COLMAP_BIN=colmap
 OPENMVS_BIN_DIR=
 BLENDER_BIN=blender
 ```
+
+For Neon Postgres, set `DATABASE_URL` to the pooled Neon connection string and disable
+runtime schema creation:
+
+```text
+DATABASE_URL=postgresql://USER:PASSWORD@HOST-POOLER.neon.tech/neondb?sslmode=require&channel_binding=require
+DATABASE_AUTO_CREATE_TABLES=false
+```
+
+The current Neon project provisioned for this app is:
+
+```text
+Project ID: billowing-wildflower-81765826
+Branch ID: br-still-grass-aky91j80
+Database: neondb
+Role: neondb_owner
+```
+
+Do not commit the real connection string. Keep it in `backend/.env` or the deployment
+platform secret manager.
+
+## Database Migrations
+
+Alembic owns schema changes after the initial Neon setup.
+
+```powershell
+uv run alembic upgrade head
+```
+
+Use the pooled Neon connection string for the API runtime. For long-running migration or
+admin workflows, use a direct Neon connection string from the Neon Console.
 
 ## Local Storage
 
@@ -107,4 +140,4 @@ storage/exports/
 - `/health` returns `status: ok`.
 - CORS is configured for local Vite development.
 - Environment and storage settings are centralized.
-- SQLite configuration is ready for Phase 1 persistence.
+- SQLAlchemy configuration can run against SQLite locally or Neon Postgres in cloud environments.

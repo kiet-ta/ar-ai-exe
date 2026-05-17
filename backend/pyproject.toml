@@ -5,7 +5,9 @@ description = "FastAPI backend for the Shoe Visual Customizer MVP."
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
+    "alembic>=1.13.0",
     "fastapi>=0.115.0",
+    "psycopg[binary]>=3.2.0",
     "pydantic-settings>=2.4.0",
     "python-multipart>=0.0.9",
     "sqlalchemy>=2.0.0",

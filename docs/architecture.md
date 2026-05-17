@@ -15,19 +15,19 @@ Flutter Mobile Scanner
 
 Mobile is capture-only. It records a guided shoe scan video, collects metadata, and uploads both to the backend. Mobile does not run real-time 3D reconstruction.
 
-The backend owns scan sessions, local storage, SQLite persistence, reconstruction jobs, model outputs, design drafts, and export packages.
+The backend owns scan sessions, local storage, Neon Postgres persistence, reconstruction jobs, model outputs, design drafts, and export packages.
 
 The web app owns model viewing and visual decoration. GLB is the runtime format. OBJ, MTL, and PNG texture files are generated for export packages.
 
 ## Current Phase
 
-Phase 0 creates the project structure and FastAPI foundation:
+The current repository has moved from SQLite-only persistence to SQLAlchemy backed by Neon Postgres for cloud database deployment:
 
 ```text
-backend/
-mobile/
-frontend/
-docs/
+FastAPI Backend
+-> SQLAlchemy
+-> Neon Postgres
+-> Alembic migrations
 ```
 
 ## Backend Storage Layout

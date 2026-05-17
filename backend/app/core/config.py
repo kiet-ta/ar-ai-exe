@@ -24,6 +24,7 @@ class Settings(BaseSettings):
 
     storage_root: Path = Path("storage")
     database_url: str = "sqlite:///./storage/app.db"
+    database_auto_create_tables: bool = True
     demo_access_token: str = "local-demo-token-change-me"
     demo_user_email: str = "demo@shoe-customizer.local"
     max_upload_size_mb: int = 250
@@ -51,6 +52,16 @@ class Settings(BaseSettings):
             return self.database_url
         relative_path = self.database_url.replace("sqlite:///./", "", 1)
         return f"sqlite:///{(BACKEND_ROOT / relative_path).as_posix()}"
+
+    @property
+    def sqlalchemy_database_url(self) -> str:
+        """Normalize common Postgres URLs to the installed psycopg SQLAlchemy driver."""
+        url = self.resolved_database_url
+        if url.startswith("postgresql://"):
+            return url.replace("postgresql://", "postgresql+psycopg://", 1)
+        if url.startswith("postgres://"):
+            return url.replace("postgres://", "postgresql+psycopg://", 1)
+        return url
 
 
 @lru_cache

@@ -16,7 +16,8 @@ settings = get_settings()
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     ensure_storage_directories(settings)
-    Base.metadata.create_all(bind=engine)
+    if settings.database_auto_create_tables:
+        Base.metadata.create_all(bind=engine)
     yield
 
 
