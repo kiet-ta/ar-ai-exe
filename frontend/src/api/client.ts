@@ -1,4 +1,12 @@
-import type { Design, DesignConfig, ExportPackage, ModelAsset, ScanSession, User } from "../types";
+import type {
+  Design,
+  DesignConfig,
+  ExportPackage,
+  ModelAsset,
+  ReconstructionReadiness,
+  ScanSession,
+  User,
+} from "../types";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8000";
 const TOKEN_STORAGE_KEY = "shoe-customizer-token";
@@ -88,6 +96,10 @@ export const api = {
     return request<User>("/api/auth/me");
   },
 
+  async getReconstructionReadiness(): Promise<ReconstructionReadiness> {
+    return request<ReconstructionReadiness>("/api/system/reconstruction-readiness");
+  },
+
   async getScanSession(scanSessionId: string): Promise<ScanSession> {
     return request<ScanSession>(`/api/scan-sessions/${scanSessionId}`);
   },
@@ -142,6 +154,22 @@ export const api = {
     const anchor = document.createElement("a");
     anchor.href = url;
     anchor.download = `${exportPackage.id}.zip`;
+    anchor.click();
+    URL.revokeObjectURL(url);
+  },
+
+  async downloadModelFile(urlPath: string, filename: string): Promise<void> {
+    const response = await fetch(`${API_BASE_URL}${urlPath}`, {
+      headers: authHeader(),
+    });
+    if (!response.ok) {
+      throw new ApiError(await errorMessage(response), response.status);
+    }
+
+    const url = URL.createObjectURL(await response.blob());
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = filename;
     anchor.click();
     URL.revokeObjectURL(url);
   },

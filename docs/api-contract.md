@@ -6,19 +6,17 @@ Base URL for local development:
 http://127.0.0.1:8000
 ```
 
+All scan, model, design, and export endpoints require:
+
+```http
+Authorization: Bearer local-demo-token-change-me
+```
+
 ## Auth
 
 ### POST /api/auth/demo-login
 
-Returns a local demo bearer token and creates the demo user if needed.
-
-Request:
-
-```http
-POST /api/auth/demo-login
-```
-
-Response:
+Creates or reuses the local demo user and returns a bearer token.
 
 ```json
 {
@@ -28,65 +26,83 @@ Response:
     "id": "user_abc",
     "role": "demo_user",
     "name": "Demo User",
-    "email": "demo@shoe-customizer.local",
-    "createdAt": "2026-05-17T01:00:00"
+    "email": "demo@shoe-customizer.local"
   }
-}
-```
-
-### GET /api/auth/me
-
-Request:
-
-```http
-GET /api/auth/me
-Authorization: Bearer local-demo-token-change-me
-```
-
-Response:
-
-```json
-{
-  "id": "user_abc",
-  "role": "demo_user",
-  "name": "Demo User",
-  "email": "demo@shoe-customizer.local",
-  "createdAt": "2026-05-17T01:00:00"
 }
 ```
 
 ## System
 
-### GET /health
+### GET /api/system/reconstruction-readiness
 
-Checks that the API process is running.
-
-Response:
+Returns whether the backend can run real shoe reconstruction right now. This endpoint is used by web and mobile before users spend time uploading videos.
 
 ```json
 {
-  "status": "ok",
-  "service": "Shoe Visual Customizer API",
-  "environment": "local"
+  "ready": false,
+  "message": "Reconstruction is not ready: Missing required tools: colmap, InterfaceCOLMAP, blender.",
+  "tools": [
+    {
+      "name": "ffmpeg",
+      "required": true,
+      "available": true,
+      "path": "/usr/bin/ffmpeg",
+      "configuredValue": "ffmpeg",
+      "hint": "Install ffmpeg or set FFMPEG_BIN."
+    }
+  ],
+  "resources": [
+    {
+      "name": "available_memory",
+      "ok": true,
+      "available": 15.2,
+      "required": 4.0,
+      "unit": "GiB",
+      "message": "available_memory OK: 15.2 GiB available."
+    }
+  ],
+  "settings": {
+    "enabled": true,
+    "frameFps": 2.0,
+    "maxFramesPerPass": 90,
+    "maxThreads": 4,
+    "minAvailableMemoryGb": 4.0,
+    "minFreeStorageGb": 8.0
+  },
+  "missingTools": ["colmap", "InterfaceCOLMAP", "blender"],
+  "blockingReasons": ["Missing required tools: colmap, InterfaceCOLMAP, blender."]
 }
 ```
 
 ## Scan Sessions
 
-All scan endpoints require:
-
-```http
-Authorization: Bearer local-demo-token-change-me
-```
-
 ### POST /api/scan-sessions
 
-Creates an empty scan session.
-
-Request:
+Creates a shoe-only scan session. Metadata may be supplied before video upload.
 
 ```json
-{}
+{
+  "metadata": {
+    "shoe": {
+      "sizeSystem": "EU",
+      "size": "42",
+      "side": "left",
+      "type": "sneaker",
+      "material": "canvas",
+      "condition": "used"
+    },
+    "measurements": {
+      "lengthCm": 27.0,
+      "widthCm": 9.5
+    },
+    "scanSetup": {
+      "calibrationReference": "A4 paper",
+      "lighting": "bright",
+      "background": "plain"
+    },
+    "customizationGoal": ["change_color", "add_sticker", "add_text"]
+  }
+}
 ```
 
 Response:
@@ -98,52 +114,30 @@ Response:
   "status": "created",
   "errorMessage": null,
   "modelAssetId": null,
-  "createdAt": "2026-05-17T01:00:00",
-  "updatedAt": "2026-05-17T01:00:00"
+  "webDesignUrl": "http://localhost:5173/design?scanId=scan_abc",
+  "uploadedPasses": [],
+  "requiredPasses": ["side_orbit", "top_orbit"],
+  "createdAt": "2026-05-19T01:00:00",
+  "updatedAt": "2026-05-19T01:00:00"
 }
 ```
 
-### POST /api/scan-sessions/{scan_session_id}/upload-video
+### POST /api/scan-sessions/{scan_session_id}/videos/{pass_type}
 
-Uploads MP4 video and scan metadata. Processing starts automatically after upload.
+Uploads one required shoe video pass.
 
-Request:
+Valid `pass_type` values:
 
-```http
-POST /api/scan-sessions/scan_abc/upload-video
-Content-Type: multipart/form-data
+```text
+side-orbit
+top-orbit
 ```
 
 Form fields:
 
 ```text
-video: raw_video.mp4
-metadata: JSON string
-```
-
-Metadata example:
-
-```json
-{
-  "shoe": {
-    "sizeSystem": "EU",
-    "size": "42",
-    "side": "left",
-    "type": "sneaker",
-    "material": "canvas",
-    "condition": "used"
-  },
-  "measurements": {
-    "lengthCm": 27.0,
-    "widthCm": 9.5
-  },
-  "scanSetup": {
-    "calibrationReference": "A4 paper",
-    "lighting": "bright",
-    "background": "plain"
-  },
-  "customizationGoal": ["change_color", "add_sticker", "add_text"]
-}
+video: side-orbit.mp4 or top-orbit.mp4
+metadata: optional JSON string
 ```
 
 Response:
@@ -152,46 +146,60 @@ Response:
 {
   "scanSession": {
     "id": "scan_abc",
-    "userId": "user_abc",
-    "status": "uploaded",
-    "errorMessage": null,
-    "modelAssetId": null,
-    "createdAt": "2026-05-17T01:00:00",
-    "updatedAt": "2026-05-17T01:00:10"
+    "status": "waiting_for_uploads",
+    "uploadedPasses": ["side_orbit"],
+    "requiredPasses": ["side_orbit", "top_orbit"]
   },
-  "processingStarted": true
+  "passType": "side_orbit",
+  "uploadedPasses": ["side_orbit"],
+  "requiredPasses": ["side_orbit", "top_orbit"],
+  "readyForProcessing": false,
+  "processingStarted": false,
+  "webDesignUrl": "http://localhost:5173/design?scanId=scan_abc"
 }
 ```
 
-### GET /api/scan-sessions/{scan_session_id}
+### POST /api/scan-sessions/{scan_session_id}/process
 
-Returns the scan session and model asset ID when processing is complete.
-
-### GET /api/scan-sessions/{scan_session_id}/status
+Starts asynchronous backend reconstruction. Both `side_orbit` and `top_orbit` must already be uploaded.
 
 Response:
 
 ```json
 {
   "id": "scan_abc",
-  "status": "completed",
+  "status": "uploaded",
   "errorMessage": null,
-  "modelAssetId": "model_abc",
-  "updatedAt": "2026-05-17T01:00:20"
+  "modelAssetId": null,
+  "updatedAt": "2026-05-19T01:01:00"
 }
 ```
 
-### POST /api/scan-sessions/{scan_session_id}/process
+### GET /api/scan-sessions/{scan_session_id}/status
 
-Manually starts processing. Upload already starts processing automatically, so this is mainly a recovery/debug endpoint.
+Returns the current processing state.
 
-Security note: scan responses intentionally do not expose raw server filesystem paths. Model and export downloads are served through authenticated API endpoints.
+Possible states include:
+
+```text
+created
+waiting_for_uploads
+uploaded
+extracting_frames
+filtering_frames
+preparing_reconstruction
+reconstructing
+cleaning_mesh
+exporting
+completed
+failed
+```
 
 ## Model Assets
 
 ### GET /api/models/{model_asset_id}
 
-Response:
+Response after processing completes:
 
 ```json
 {
@@ -201,149 +209,45 @@ Response:
   "objUrl": "/api/models/model_abc/download/obj",
   "mtlUrl": "/api/models/model_abc/download/mtl",
   "textureUrl": "/api/models/model_abc/download/texture",
+  "metadataUrl": "/api/models/model_abc/download/metadata",
   "qualityReportUrl": "/api/models/model_abc/quality-report",
+  "objPackageZipUrl": "/api/models/model_abc/download/obj-package",
   "qualityReport": {
-    "overallScore": 75,
-    "frameCount": 1,
-    "lighting": "unknown",
-    "blur": "unknown",
-    "coverage": "unknown",
-    "scaleConfidence": "medium",
-    "recommendation": "Usable for visual design package."
+    "overallScore": 78,
+    "status": "completed",
+    "framesSelected": {
+      "side_orbit": 55,
+      "top_orbit": 48
+    }
   },
-  "createdAt": "2026-05-17T01:00:20"
+  "createdAt": "2026-05-19T01:05:00"
 }
 ```
 
-### GET /api/models/{model_asset_id}/download/glb
+### Download endpoints
 
-Downloads `shoe_base.glb`.
-
-### GET /api/models/{model_asset_id}/download/obj
-
-Downloads `shoe_base.obj`.
-
-### GET /api/models/{model_asset_id}/download/mtl
-
-Downloads `shoe_base.mtl`.
-
-### GET /api/models/{model_asset_id}/download/texture
-
-Downloads `base_texture.png`.
-
-### GET /api/models/{model_asset_id}/quality-report
-
-Returns the generated quality report JSON.
-
-## Designs
-
-### POST /api/designs
-
-Request:
-
-```json
-{
-  "modelAssetId": "model_abc",
-  "name": "Demo red text shoe",
-  "config": {
-    "modelAssetId": "model_abc",
-    "baseColor": "#ffffff",
-    "material": {
-      "roughness": 0.5,
-      "metallic": 0.0
-    },
-    "stickers": [
-      {
-        "id": "sticker_001",
-        "type": "image",
-        "imageUrl": "/assets/stickers/flame.png",
-        "position": [0.2, 0.5, 0.1],
-        "rotation": [0, 0.5, 0],
-        "scale": 0.25
-      }
-    ],
-    "texts": [
-      {
-        "id": "text_001",
-        "value": "TAK",
-        "font": "Arial",
-        "color": "#111111",
-        "position": [0.1, 0.4, 0.2],
-        "rotation": [0, 0.3, 0],
-        "scale": 0.2
-      }
-    ]
-  }
-}
+```text
+GET /api/models/{model_asset_id}/download/glb
+GET /api/models/{model_asset_id}/download/obj
+GET /api/models/{model_asset_id}/download/mtl
+GET /api/models/{model_asset_id}/download/texture
+GET /api/models/{model_asset_id}/download/metadata
+GET /api/models/{model_asset_id}/download/obj-package
+GET /api/models/{model_asset_id}/quality-report
 ```
 
-Response:
+Filenames:
 
-```json
-{
-  "id": "design_abc",
-  "userId": "user_abc",
-  "modelAssetId": "model_abc",
-  "name": "Demo red text shoe",
-  "status": "draft",
-  "designConfig": {
-    "modelAssetId": "model_abc",
-    "baseColor": "#ffffff",
-    "material": {
-      "roughness": 0.5,
-      "metallic": 0.0
-    },
-    "stickers": [],
-    "texts": []
-  },
-  "createdAt": "2026-05-17T01:00:30",
-  "updatedAt": "2026-05-17T01:00:30"
-}
+```text
+shoe_preview.glb
+shoe.obj
+shoe.mtl
+shoe_texture.png
+metadata.json
+shoe_obj_package.zip
+quality_report.json
 ```
 
-### GET /api/designs/{design_id}
+## Legacy Compatibility
 
-Returns a saved design draft.
-
-### PUT /api/designs/{design_id}
-
-Updates the design name and/or `designConfig`.
-
-### POST /api/designs/{design_id}/export
-
-Creates the visual design package ZIP.
-
-Response:
-
-```json
-{
-  "id": "export_abc",
-  "designId": "design_abc",
-  "status": "completed",
-  "downloadUrl": "/api/exports/export_abc/download",
-  "files": [
-    "final_shoe.glb",
-    "final_shoe.obj",
-    "final_shoe.mtl",
-    "final_texture.png",
-    "preview_front.png",
-    "preview_side.png",
-    "preview_top.png",
-    "preview_back.png",
-    "design_config.json",
-    "measurement_info.json",
-    "production_notes.json"
-  ],
-  "createdAt": "2026-05-17T01:00:40"
-}
-```
-
-## Exports
-
-### GET /api/exports/{export_id}
-
-Returns export package metadata.
-
-### GET /api/exports/{export_id}/download
-
-Downloads the ZIP package.
+`POST /api/scan-sessions/{scan_session_id}/upload-video` still accepts the old single-video form and stores it as `side_orbit`, but the real reconstruction worker will not process until `top_orbit` is also uploaded.

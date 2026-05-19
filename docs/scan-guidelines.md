@@ -2,13 +2,16 @@
 
 ## Goal
 
-Capture enough visual coverage for the backend reconstruction pipeline to create or mock a one-mesh shoe model for visual customization.
+Capture enough visual coverage for the backend reconstruction pipeline to create a textured shoe model for visual customization.
 
-## Recommended Capture
+## Required MVP Capture
 
+- Pass 1: side orbit, 360 degrees around the shoe at side height.
+- Pass 2: top-angle orbit, 360 degrees at roughly 30-45 degrees from above.
+- Do not scan the bottom sole for the MVP.
 - Keep the full shoe inside the overlay guide.
-- Record for 30 to 60 seconds.
-- Move around the shoe slowly.
+- Record each pass for 30 to 60 seconds.
+- Move around the shoe slowly and avoid motion blur.
 - Keep lighting bright and even.
 - Use a plain background.
 - Include a scale reference such as A4 paper, ruler, or printed marker.
@@ -44,4 +47,4 @@ Capture enough visual coverage for the backend reconstruction pipeline to create
 
 ## MVP Limits
 
-The mobile app should only capture and upload video plus metadata. Reconstruction happens on the backend.
+The mobile app should only capture and upload video plus metadata. Reconstruction happens on the backend. The MVP is shoe-only and should not be treated as a generic object scanner.

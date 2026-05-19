@@ -24,8 +24,15 @@ router = APIRouter(prefix="/scan-sessions", tags=["scan-sessions"])
 
 
 def scan_response(scan_session: ScanSession, model_asset_id: str | None) -> ScanSessionResponse:
+    uploaded_passes = []
+    if scan_session.side_video_path or scan_session.raw_video_path:
+        uploaded_passes.append("side_orbit")
+    if scan_session.top_video_path:
+        uploaded_passes.append("top_orbit")
     payload = ScanSessionResponse.model_validate(scan_session).model_dump()
     payload["model_asset_id"] = model_asset_id
+    payload["uploaded_passes"] = uploaded_passes
+    payload["required_passes"] = list(ScanSessionService.required_passes)
     if not payload.get("web_design_url"):
         payload["web_design_url"] = f"{get_settings().web_app_base_url.rstrip('/')}/design?scanId={scan_session.id}"
     return ScanSessionResponse.model_validate(payload)
@@ -60,10 +67,45 @@ async def upload_video(
         video_bytes=await video.read(),
         metadata=parsed_metadata,
     )
-    background_tasks.add_task(process_scan_session, saved_session.id)
     return ScanUploadResponse(
         scanSession=scan_response(saved_session, service.get_model_asset_id(saved_session.id)),
-        processingStarted=True,
+        passType="side_orbit",
+        uploadedPasses=service.uploaded_passes(saved_session),
+        requiredPasses=list(service.required_passes),
+        readyForProcessing=service.is_ready_for_processing(saved_session),
+        processingStarted=False,
+        webDesignUrl=saved_session.web_design_url or service.web_design_url(saved_session.id),
+    )
+
+
+@router.post("/{scan_session_id}/videos/{pass_type}", response_model=ScanUploadResponse)
+async def upload_video_pass(
+    scan_session_id: str,
+    pass_type: str,
+    current_user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_db)],
+    video: Annotated[UploadFile, File()],
+    metadata: Annotated[str | None, Form()] = None,
+) -> ScanUploadResponse:
+    service = ScanSessionService(db)
+    scan_session = service.get_for_user(scan_session_id, current_user)
+    parsed_metadata = parse_metadata(metadata) if metadata else None
+    normalized_pass = service.normalize_pass_type(pass_type)
+    saved_session = service.save_pass_upload(
+        scan_session=scan_session,
+        pass_type=normalized_pass,
+        file_name=video.filename,
+        content_type=video.content_type,
+        video_bytes=await video.read(),
+        metadata=parsed_metadata,
+    )
+    return ScanUploadResponse(
+        scanSession=scan_response(saved_session, service.get_model_asset_id(saved_session.id)),
+        passType=normalized_pass,
+        uploadedPasses=service.uploaded_passes(saved_session),
+        requiredPasses=list(service.required_passes),
+        readyForProcessing=service.is_ready_for_processing(saved_session),
+        processingStarted=False,
         webDesignUrl=saved_session.web_design_url or service.web_design_url(saved_session.id),
     )
 
@@ -105,10 +147,10 @@ def process_scan(
 ) -> ScanStatusResponse:
     service = ScanSessionService(db)
     scan_session = service.get_for_user(scan_session_id, current_user)
-    if not scan_session.raw_video_path:
+    if not service.is_ready_for_processing(scan_session):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Upload a video before starting processing.",
+            detail="Upload both required shoe videos before starting processing.",
         )
     background_tasks.add_task(process_scan_session, scan_session.id)
     return ScanStatusResponse(

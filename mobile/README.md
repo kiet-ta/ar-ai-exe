@@ -4,11 +4,14 @@ Flutter scanner MVP.
 
 ## Responsibilities
 
-- Record guided shoe scan video.
+- Record two guided shoe scan videos:
+  - side orbit, 360 degrees around the shoe.
+  - top-angle orbit, 30-45 degrees from above.
 - Collect required scan metadata.
-- Upload video and metadata to the FastAPI backend.
+- Upload both videos and metadata to the FastAPI backend.
+- Check backend reconstruction readiness before uploading, so missing COLMAP/OpenMVS/Blender or low resources are reported early.
 
-The mobile app does not perform real-time 3D reconstruction.
+The mobile app does not perform real-time 3D reconstruction and does not scan the bottom sole in the MVP.
 
 ## Run
 

@@ -13,8 +13,11 @@ def new_id(prefix: str) -> str:
 
 class ScanStatus:
     CREATED = "created"
+    WAITING_FOR_UPLOADS = "waiting_for_uploads"
     UPLOADED = "uploaded"
     EXTRACTING_FRAMES = "extracting_frames"
+    FILTERING_FRAMES = "filtering_frames"
+    PREPARING_RECONSTRUCTION = "preparing_reconstruction"
     RECONSTRUCTING = "reconstructing"
     CLEANING_MESH = "cleaning_mesh"
     UV_UNWRAPPING = "uv_unwrapping"
@@ -56,11 +59,19 @@ class ScanSession(Base):
     user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
     status: Mapped[str] = mapped_column(String(32), default=ScanStatus.CREATED, index=True)
     raw_video_path: Mapped[str | None] = mapped_column(Text, nullable=True)
+    side_video_path: Mapped[str | None] = mapped_column(Text, nullable=True)
+    top_video_path: Mapped[str | None] = mapped_column(Text, nullable=True)
     metadata_path: Mapped[str | None] = mapped_column(Text, nullable=True)
     web_design_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     raw_video_size_bytes: Mapped[int | None] = mapped_column(Integer, nullable=True)
     raw_video_content_type: Mapped[str | None] = mapped_column(String(120), nullable=True)
     raw_video_checksum: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    side_video_size_bytes: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    side_video_content_type: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    side_video_checksum: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    top_video_size_bytes: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    top_video_content_type: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    top_video_checksum: Mapped[str | None] = mapped_column(String(128), nullable=True)
     metadata_size_bytes: Mapped[int | None] = mapped_column(Integer, nullable=True)
     metadata_content_type: Mapped[str | None] = mapped_column(String(120), nullable=True)
     metadata_checksum: Mapped[str | None] = mapped_column(String(128), nullable=True)
@@ -89,7 +100,9 @@ class ModelAsset(Base):
     obj_path: Mapped[str] = mapped_column(Text)
     mtl_path: Mapped[str] = mapped_column(Text)
     texture_path: Mapped[str] = mapped_column(Text)
+    metadata_path: Mapped[str | None] = mapped_column(Text, nullable=True)
     quality_report_path: Mapped[str] = mapped_column(Text)
+    obj_package_zip_path: Mapped[str | None] = mapped_column(Text, nullable=True)
     glb_size_bytes: Mapped[int | None] = mapped_column(Integer, nullable=True)
     glb_content_type: Mapped[str | None] = mapped_column(String(120), nullable=True)
     glb_checksum: Mapped[str | None] = mapped_column(String(128), nullable=True)
@@ -102,9 +115,15 @@ class ModelAsset(Base):
     texture_size_bytes: Mapped[int | None] = mapped_column(Integer, nullable=True)
     texture_content_type: Mapped[str | None] = mapped_column(String(120), nullable=True)
     texture_checksum: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    metadata_size_bytes: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    metadata_content_type: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    metadata_checksum: Mapped[str | None] = mapped_column(String(128), nullable=True)
     quality_report_size_bytes: Mapped[int | None] = mapped_column(Integer, nullable=True)
     quality_report_content_type: Mapped[str | None] = mapped_column(String(120), nullable=True)
     quality_report_checksum: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    obj_package_zip_size_bytes: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    obj_package_zip_content_type: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    obj_package_zip_checksum: Mapped[str | None] = mapped_column(String(128), nullable=True)
     created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
 
     scan_session: Mapped[ScanSession] = relationship(back_populates="model_asset")

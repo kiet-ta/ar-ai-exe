@@ -1,4 +1,4 @@
-import { LogIn, RefreshCw, Search, UserPlus } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Cpu, HardDrive, LogIn, RefreshCw, Search, UserPlus, Wrench } from "lucide-react";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 
 import { api, ApiError, designStorageKey } from "./api/client";
@@ -6,7 +6,15 @@ import { EditorPanels } from "./components/Editor/EditorPanels";
 import { AppShell } from "./components/Layout/AppShell";
 import { MetadataPanel } from "./components/MetadataPanel/MetadataPanel";
 import { ModelViewer } from "./components/ModelViewer/ModelViewer";
-import type { Design, DesignConfig, ExportPackage, ModelAsset, ScanSession, User } from "./types";
+import type {
+  Design,
+  DesignConfig,
+  ExportPackage,
+  ModelAsset,
+  ReconstructionReadiness,
+  ScanSession,
+  User,
+} from "./types";
 
 export function App() {
   const [user, setUser] = useState<User | null>(null);
@@ -18,6 +26,7 @@ export function App() {
   const [designName, setDesignName] = useState("Untitled shoe design");
   const [config, setConfig] = useState<DesignConfig | null>(null);
   const [exportPackage, setExportPackage] = useState<ExportPackage | null>(null);
+  const [readiness, setReadiness] = useState<ReconstructionReadiness | null>(null);
   const [statusMessage, setStatusMessage] = useState("Ready");
   const [isSaving, setIsSaving] = useState(false);
   const [authMode, setAuthMode] = useState<"login" | "register">("login");
@@ -27,6 +36,7 @@ export function App() {
   const [isAuthBusy, setIsAuthBusy] = useState(false);
 
   useEffect(() => {
+    void loadReadiness();
     if (!api.hasToken()) {
       setStatusMessage("Sign in to open scan designs.");
       return;
@@ -98,6 +108,15 @@ export function App() {
     }
   }
 
+  async function loadReadiness() {
+    try {
+      setReadiness(await api.getReconstructionReadiness());
+    } catch (error) {
+      setReadiness(null);
+      setStatusMessage(messageFromError(error));
+    }
+  }
+
   function logout() {
     api.logout();
     setUser(null);
@@ -129,7 +148,7 @@ export function App() {
       window.history.replaceState({}, "", url);
 
       if (!loadedScan.modelAssetId) {
-        setStatusMessage(`Scan is ${loadedScan.status}. Waiting for model output.`);
+        setStatusMessage(`${scanStatusLabel(loadedScan.status)}. Waiting for model output.`);
         return;
       }
 
@@ -218,6 +237,14 @@ export function App() {
     }
   }
 
+  async function downloadModelFile(urlPath: string, filename: string) {
+    try {
+      await api.downloadModelFile(urlPath, filename);
+    } catch (error) {
+      setStatusMessage(messageFromError(error));
+    }
+  }
+
   return (
     <AppShell user={user}>
       <main className="workspace">
@@ -263,11 +290,14 @@ export function App() {
               <span className="status-line">{statusMessage}</span>
             </section>
 
+            <ReadinessBanner readiness={readiness} onRefresh={loadReadiness} />
+
             <section className="main-grid">
               <MetadataPanel scanSession={scanSession} modelAsset={modelAsset} />
               <ModelViewer modelUrl={modelUrl} config={config} />
               <EditorPanels
                 config={config}
+                modelAsset={modelAsset}
                 designName={designName}
                 isSaving={isSaving}
                 exportPackage={exportPackage}
@@ -276,12 +306,76 @@ export function App() {
                 onSave={saveDesign}
                 onExport={exportDesign}
                 onDownload={downloadExport}
+                onDownloadModelFile={downloadModelFile}
               />
             </section>
           </>
         )}
       </main>
     </AppShell>
+  );
+}
+
+type ReadinessBannerProps = {
+  readiness: ReconstructionReadiness | null;
+  onRefresh: () => void;
+};
+
+function ReadinessBanner({ readiness, onRefresh }: ReadinessBannerProps) {
+  if (!readiness) {
+    return (
+      <section className="readiness-banner warning">
+        <Wrench size={18} aria-hidden="true" />
+        <div>
+          <h2>Reconstruction readiness unknown</h2>
+          <p>Backend readiness could not be loaded.</p>
+        </div>
+        <button type="button" onClick={onRefresh}>
+          <RefreshCw size={16} aria-hidden="true" />
+          Retry
+        </button>
+      </section>
+    );
+  }
+
+  const memory = readiness.resources.find((resource) => resource.name === "available_memory");
+  const storage = readiness.resources.find((resource) => resource.name === "storage_free");
+
+  return (
+    <section className={`readiness-banner ${readiness.ready ? "ready" : "warning"}`}>
+      {readiness.ready ? <CheckCircle2 size={18} aria-hidden="true" /> : <AlertTriangle size={18} aria-hidden="true" />}
+      <div className="readiness-copy">
+        <h2>{readiness.ready ? "Reconstruction ready" : "Reconstruction blocked"}</h2>
+        <p>{readiness.message}</p>
+        <div className="readiness-metrics">
+          <span>
+            <Cpu size={14} aria-hidden="true" />
+            RAM {formatResource(memory)}
+          </span>
+          <span>
+            <HardDrive size={14} aria-hidden="true" />
+            Storage {formatResource(storage)}
+          </span>
+          <span>
+            <Wrench size={14} aria-hidden="true" />
+            Threads {String(readiness.settings.maxThreads ?? "n/a")}
+          </span>
+        </div>
+        {readiness.missingTools.length > 0 ? (
+          <div className="tool-chip-row">
+            {readiness.missingTools.map((tool) => (
+              <span className="tool-chip" key={tool}>
+                {tool}
+              </span>
+            ))}
+          </div>
+        ) : null}
+      </div>
+      <button type="button" onClick={onRefresh}>
+        <RefreshCw size={16} aria-hidden="true" />
+        Refresh
+      </button>
+    </section>
   );
 }
 
@@ -379,6 +473,32 @@ function createDefaultConfig(modelAssetId: string): DesignConfig {
     stickers: [],
     texts: [],
   };
+}
+
+function scanStatusLabel(status: string): string {
+  const labels: Record<string, string> = {
+    created: "Created",
+    waiting_for_uploads: "Waiting for both shoe videos",
+    uploaded: "Uploaded",
+    extracting_frames: "Extracting frames",
+    filtering_frames: "Filtering frames",
+    preparing_reconstruction: "Preparing reconstruction",
+    reconstructing: "Reconstructing mesh",
+    cleaning_mesh: "Cleaning mesh",
+    uv_unwrapping: "Preparing UVs",
+    texture_baking: "Baking texture",
+    exporting: "Exporting model files",
+    completed: "Completed",
+    failed: "Failed",
+  };
+  return labels[status] ?? status;
+}
+
+function formatResource(resource: { available: number | null; required: number; unit: string } | undefined): string {
+  if (!resource || resource.available === null) {
+    return "unknown";
+  }
+  return `${resource.available.toFixed(1)}/${resource.required.toFixed(1)} ${resource.unit}`;
 }
 
 function messageFromError(error: unknown): string {

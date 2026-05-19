@@ -14,6 +14,13 @@ from app.services.storage import get_storage_service
 class ScanSessionService:
     allowed_content_types = {"video/mp4"}
     allowed_extensions = {".mp4"}
+    required_passes = ("side_orbit", "top_orbit")
+    pass_aliases = {
+        "side-orbit": "side_orbit",
+        "side_orbit": "side_orbit",
+        "top-orbit": "top_orbit",
+        "top_orbit": "top_orbit",
+    }
 
     def __init__(self, db: Session):
         self.db = db
@@ -52,6 +59,26 @@ class ScanSessionService:
         asset = self.db.scalar(select(ModelAsset).where(ModelAsset.scan_session_id == scan_session_id))
         return asset.id if asset else None
 
+    def uploaded_passes(self, scan_session: ScanSession) -> list[str]:
+        uploaded: list[str] = []
+        if scan_session.side_video_path or scan_session.raw_video_path:
+            uploaded.append("side_orbit")
+        if scan_session.top_video_path:
+            uploaded.append("top_orbit")
+        return uploaded
+
+    def is_ready_for_processing(self, scan_session: ScanSession) -> bool:
+        return all(pass_type in self.uploaded_passes(scan_session) for pass_type in self.required_passes)
+
+    def normalize_pass_type(self, pass_type: str) -> str:
+        normalized = self.pass_aliases.get(pass_type)
+        if not normalized:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Unsupported video pass. Use 'side-orbit' or 'top-orbit'.",
+            )
+        return normalized
+
     def save_upload(
         self,
         scan_session: ScanSession,
@@ -60,29 +87,78 @@ class ScanSessionService:
         video_bytes: bytes,
         metadata: ScanMetadata,
     ) -> ScanSession:
-        self._validate_video(file_name, content_type, video_bytes)
+        return self.save_pass_upload(
+            scan_session=scan_session,
+            pass_type="side_orbit",
+            file_name=file_name,
+            content_type=content_type,
+            video_bytes=video_bytes,
+            metadata=metadata,
+        )
 
+    def save_pass_upload(
+        self,
+        scan_session: ScanSession,
+        pass_type: str,
+        file_name: str | None,
+        content_type: str | None,
+        video_bytes: bytes,
+        metadata: ScanMetadata | None = None,
+    ) -> ScanSession:
+        normalized_pass = self.normalize_pass_type(pass_type)
+        self._validate_video(file_name, content_type, video_bytes)
         video_object = self.storage.put_bytes(
-            self._raw_video_key(scan_session.id),
+            self._raw_video_key(scan_session.id, normalized_pass),
             video_bytes,
             content_type or "video/mp4",
         )
+
+        if normalized_pass == "side_orbit":
+            scan_session.side_video_path = video_object.key
+            scan_session.side_video_size_bytes = video_object.size_bytes
+            scan_session.side_video_content_type = video_object.content_type
+            scan_session.side_video_checksum = video_object.checksum
+            scan_session.raw_video_path = video_object.key
+            scan_session.raw_video_size_bytes = video_object.size_bytes
+            scan_session.raw_video_content_type = video_object.content_type
+            scan_session.raw_video_checksum = video_object.checksum
+        else:
+            scan_session.top_video_path = video_object.key
+            scan_session.top_video_size_bytes = video_object.size_bytes
+            scan_session.top_video_content_type = video_object.content_type
+            scan_session.top_video_checksum = video_object.checksum
+
+        if metadata:
+            metadata_object = self.storage.put_bytes(
+                self._metadata_key(scan_session.id),
+                json.dumps(metadata.model_dump(by_alias=True), indent=2).encode("utf-8"),
+                "application/json",
+            )
+            scan_session.metadata_path = metadata_object.key
+            scan_session.metadata_size_bytes = metadata_object.size_bytes
+            scan_session.metadata_content_type = metadata_object.content_type
+            scan_session.metadata_checksum = metadata_object.checksum
+
+        scan_session.web_design_url = self.web_design_url(scan_session.id)
+        scan_session.status = (
+            ScanStatus.UPLOADED if self.is_ready_for_processing(scan_session) else ScanStatus.WAITING_FOR_UPLOADS
+        )
+        scan_session.error_message = None
+        self.db.commit()
+        self.db.refresh(scan_session)
+        return scan_session
+
+    def save_metadata(self, scan_session: ScanSession, metadata: ScanMetadata) -> ScanSession:
         metadata_object = self.storage.put_bytes(
             self._metadata_key(scan_session.id),
             json.dumps(metadata.model_dump(by_alias=True), indent=2).encode("utf-8"),
             "application/json",
         )
-
-        scan_session.raw_video_path = video_object.key
-        scan_session.raw_video_size_bytes = video_object.size_bytes
-        scan_session.raw_video_content_type = video_object.content_type
-        scan_session.raw_video_checksum = video_object.checksum
         scan_session.metadata_path = metadata_object.key
         scan_session.metadata_size_bytes = metadata_object.size_bytes
         scan_session.metadata_content_type = metadata_object.content_type
         scan_session.metadata_checksum = metadata_object.checksum
         scan_session.web_design_url = self.web_design_url(scan_session.id)
-        scan_session.status = ScanStatus.UPLOADED
         scan_session.error_message = None
         self.db.commit()
         self.db.refresh(scan_session)
@@ -106,8 +182,9 @@ class ScanSessionService:
     def web_design_url(self, scan_session_id: str) -> str:
         return f"{self.settings.web_app_base_url.rstrip('/')}/design?scanId={scan_session_id}"
 
-    def _raw_video_key(self, scan_session_id: str) -> str:
-        return f"raw-scans/{scan_session_id}/raw_video.mp4"
+    def _raw_video_key(self, scan_session_id: str, pass_type: str) -> str:
+        file_name = "side_orbit.mp4" if pass_type == "side_orbit" else "top_orbit.mp4"
+        return f"raw-scans/{scan_session_id}/{file_name}"
 
     def _metadata_key(self, scan_session_id: str) -> str:
         return f"raw-scans/{scan_session_id}/metadata.json"

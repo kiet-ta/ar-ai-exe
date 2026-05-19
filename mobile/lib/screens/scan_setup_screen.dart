@@ -154,7 +154,12 @@ class _ScanSetupScreenState extends State<ScanSetupScreen> {
     );
 
     Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => CameraScanScreen(metadata: metadata)),
+      MaterialPageRoute(
+        builder: (_) => CameraScanScreen(
+          metadata: metadata,
+          pass: ScanPass.sideOrbit,
+        ),
+      ),
     );
   }
 }
@@ -177,7 +182,7 @@ class _DropdownField extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: DropdownButtonFormField<String>(
-        value: value,
+        initialValue: value,
         decoration: InputDecoration(labelText: label, border: const OutlineInputBorder()),
         items: values.map((item) => DropdownMenuItem(value: item, child: Text(item))).toList(),
         onChanged: (value) {

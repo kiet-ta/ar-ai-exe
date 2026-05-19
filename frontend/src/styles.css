@@ -161,6 +161,12 @@ h3 {
   gap: 10px;
 }
 
+.download-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
 .scan-loader label {
   min-width: 320px;
 }
@@ -168,6 +174,66 @@ h3 {
 .status-line {
   color: #526070;
   font-size: 13px;
+}
+
+.readiness-banner {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 12px;
+  align-items: start;
+  border: 1px solid #d7dee8;
+  border-radius: 8px;
+  padding: 14px;
+  background: #ffffff;
+}
+
+.readiness-banner.ready {
+  border-color: #9fd3c2;
+  background: #f4fbf8;
+}
+
+.readiness-banner.warning {
+  border-color: #e2bf72;
+  background: #fff9ea;
+}
+
+.readiness-copy {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.readiness-copy p {
+  color: #526070;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.readiness-metrics,
+.tool-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.readiness-metrics span,
+.tool-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 28px;
+  border: 1px solid #d7dee8;
+  border-radius: 6px;
+  padding: 0 8px;
+  background: #ffffff;
+  color: #526070;
+  font-size: 12px;
+}
+
+.tool-chip {
+  color: #7b4b00;
+  border-color: #e2bf72;
+  background: #fffbf0;
 }
 
 .main-grid {
@@ -236,6 +302,67 @@ dd {
   font-size: 13px;
 }
 
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 26px;
+  border: 1px solid #c7d2df;
+  border-radius: 999px;
+  padding: 0 9px;
+  background: #ffffff;
+  font-size: 12px;
+}
+
+.status-completed {
+  color: #235b4f;
+  border-color: #9fd3c2;
+  background: #f4fbf8;
+}
+
+.status-failed {
+  color: #8a2f2d;
+  border-color: #efb5ae;
+  background: #fff3f1;
+}
+
+.status-reconstructing,
+.status-filtering_frames,
+.status-extracting_frames,
+.status-preparing_reconstruction,
+.status-cleaning_mesh,
+.status-exporting {
+  color: #1f5a78;
+  border-color: #b7d3e4;
+  background: #f0f8fc;
+}
+
+.error-text {
+  color: #8a2f2d;
+}
+
+.quality-stack {
+  display: grid;
+  gap: 12px;
+}
+
+.quality-summary {
+  grid-template-columns: auto 1fr;
+  column-gap: 12px;
+}
+
+.warning-list {
+  display: grid;
+  gap: 8px;
+}
+
+.warning-list p {
+  border-left: 3px solid #e2bf72;
+  padding-left: 9px;
+  color: #6b4b13;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
 .layer-list {
   display: grid;
   gap: 8px;
@@ -275,9 +402,14 @@ dd {
 @media (max-width: 720px) {
   .topbar,
   .toolbar-band,
-  .scan-loader {
+  .scan-loader,
+  .readiness-banner {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .readiness-banner {
+    grid-template-columns: 1fr;
   }
 
   .topbar {

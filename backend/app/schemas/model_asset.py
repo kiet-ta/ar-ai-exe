@@ -12,6 +12,8 @@ class ModelAssetResponse(CamelModel):
     obj_url: str = Field(alias="objUrl")
     mtl_url: str = Field(alias="mtlUrl")
     texture_url: str = Field(alias="textureUrl")
+    metadata_url: str = Field(alias="metadataUrl")
     quality_report_url: str = Field(alias="qualityReportUrl")
+    obj_package_zip_url: str = Field(alias="objPackageZipUrl")
     quality_report: dict = Field(default_factory=dict, alias="qualityReport")
     created_at: datetime = Field(alias="createdAt")

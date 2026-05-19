@@ -6,9 +6,12 @@
 - `uv`
 - Node.js and npm
 - Flutter SDK for the mobile app
-- Optional: FFmpeg for real frame extraction
+- FFmpeg
+- COLMAP
+- OpenMVS binaries
+- Blender
 
-The backend still works in mock mode if FFmpeg is unavailable or the uploaded video is not readable.
+The backend does not generate mock reconstruction output. If any reconstruction binary is missing, processing fails with a clear scan error.
 
 ## Backend Startup
 
@@ -89,27 +92,33 @@ Use these values in the mobile setup form:
 2. Start the Vite frontend.
 3. Run the Flutter mobile app.
 4. In Flutter, complete scan metadata.
-5. Record a guided shoe scan video.
-6. Upload the video.
-7. Copy the scan session ID from the result screen.
-8. Open the frontend and paste the scan session ID.
-9. Load the completed scan.
-10. Change the base color, add a sticker, and add text.
-11. Save the design draft.
-12. Export the package.
-13. Download the ZIP.
+5. Record the side orbit video.
+6. Record the top-angle orbit video.
+7. Upload both videos and start processing.
+8. Copy the scan session ID from the result screen.
+9. Open the frontend and paste the scan session ID.
+10. Load the completed scan.
+11. Inspect and download GLB/OBJ/MTL/texture/OBJ ZIP.
+12. Change the base color, add a sticker, and add text.
+13. Save the design draft.
+14. Export the package.
+15. Download the design ZIP.
 
 ## Expected Backend Outputs
 
 ```text
-backend/storage/raw-scans/{scan_session_id}/raw_video.mp4
+backend/storage/raw-scans/{scan_session_id}/side_orbit.mp4
+backend/storage/raw-scans/{scan_session_id}/top_orbit.mp4
 backend/storage/raw-scans/{scan_session_id}/metadata.json
-backend/storage/frames/{scan_session_id}/frame_0001.jpg
-backend/storage/models/{scan_session_id}/shoe_base.glb
-backend/storage/models/{scan_session_id}/shoe_base.obj
-backend/storage/models/{scan_session_id}/shoe_base.mtl
-backend/storage/models/{scan_session_id}/base_texture.png
+backend/storage/frames/{scan_session_id}/side_orbit/*.jpg
+backend/storage/frames/{scan_session_id}/top_orbit/*.jpg
+backend/storage/models/{scan_session_id}/shoe_preview.glb
+backend/storage/models/{scan_session_id}/shoe.obj
+backend/storage/models/{scan_session_id}/shoe.mtl
+backend/storage/models/{scan_session_id}/shoe_texture.png
+backend/storage/models/{scan_session_id}/metadata.json
 backend/storage/models/{scan_session_id}/quality_report.json
+backend/storage/models/{scan_session_id}/shoe_obj_package.zip
 backend/storage/designs/{design_id}/design_config.json
 backend/storage/exports/{export_id}/{export_id}.zip
 ```
@@ -134,6 +143,6 @@ production_notes.json
 
 - If the frontend cannot load data, make sure the backend is running on `127.0.0.1:8000`.
 - If Flutter runs on Android emulator, use `10.0.2.2:8000` instead of `127.0.0.1:8000`.
-- If processing completes with only one frame, FFmpeg likely failed or is unavailable. Mock mode still creates usable MVP assets.
+- If processing fails immediately, verify `ffmpeg`, `colmap`, OpenMVS binaries, and `blender` are installed and configured in `backend/.env`.
 - If protected downloads fail in the browser, use the frontend download buttons. They fetch files with the demo bearer token.
 - If `npm` resolves to a broken user-level install, run npm through `node "C:\Program Files\nodejs\node_modules\npm\bin\npm-cli.js"`.

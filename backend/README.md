@@ -25,6 +25,7 @@ Copy-Item .env.example .env
 ## Run Locally
 
 ```powershell
+uv run alembic upgrade head
 uv run uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 ```
 
@@ -68,9 +69,11 @@ Current backend support includes:
 - SQLAlchemy persistence for users, scan sessions, model assets, designs, and export packages.
 - Neon Postgres support for cloud database deployment.
 - Scan session creation.
-- MP4 upload with metadata validation.
-- Automatic background processing after upload.
-- Mock reconstruction output with GLB, OBJ, MTL, texture, and quality report.
+- Required two-pass MP4 upload: `side_orbit` and `top_orbit`.
+- Manual/background processing start after both videos are uploaded.
+- Real local reconstruction command orchestration for FFmpeg, COLMAP, OpenMVS, and Blender.
+- Toolchain, RAM, storage, and thread-limit readiness checks before reconstruction starts.
+- GLB, OBJ, MTL, texture, metadata, quality report, and OBJ ZIP package outputs.
 - Model metadata and file download endpoints.
 - Design draft save/reload/update.
 - Visual design package export as a ZIP.
@@ -85,11 +88,29 @@ Important values:
 STORAGE_ROOT=storage
 DATABASE_URL=sqlite:///./storage/app.db
 DATABASE_AUTO_CREATE_TABLES=true
-ENABLE_REAL_RECONSTRUCTION=false
+ENABLE_REAL_RECONSTRUCTION=true
 COLMAP_BIN=colmap
 OPENMVS_BIN_DIR=
 BLENDER_BIN=blender
+FFMPEG_BIN=ffmpeg
+RECONSTRUCTION_FRAME_FPS=2.0
+RECONSTRUCTION_MAX_FRAMES_PER_PASS=90
+RECONSTRUCTION_MIN_BRIGHTNESS=28.0
+RECONSTRUCTION_MIN_SHARPNESS=95.0
+RECONSTRUCTION_DUPLICATE_HAMMING_THRESHOLD=4
+RECONSTRUCTION_COMMAND_TIMEOUT_SECONDS=7200
+RECONSTRUCTION_MAX_THREADS=4
+RECONSTRUCTION_MIN_AVAILABLE_MEMORY_GB=4.0
+RECONSTRUCTION_MIN_FREE_STORAGE_GB=8.0
 ```
+
+Check local readiness with:
+
+```powershell
+Invoke-RestMethod http://127.0.0.1:8000/api/system/reconstruction-readiness
+```
+
+The reconstruction worker does not fall back to mock assets. If any required binary or resource guard is missing, the scan status becomes `failed` with an actionable toolchain error.
 
 For Neon Postgres, set `DATABASE_URL` to the pooled Neon connection string and disable
 runtime schema creation:

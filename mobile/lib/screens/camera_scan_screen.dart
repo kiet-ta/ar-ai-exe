@@ -8,10 +8,42 @@ import '../models/scan_metadata.dart';
 import '../widgets/scan_guide_overlay.dart';
 import 'upload_progress_screen.dart';
 
+enum ScanPass {
+  sideOrbit,
+  topOrbit;
+
+  String get apiValue => switch (this) {
+        ScanPass.sideOrbit => 'side-orbit',
+        ScanPass.topOrbit => 'top-orbit',
+      };
+
+  String get title => switch (this) {
+        ScanPass.sideOrbit => 'Side orbit',
+        ScanPass.topOrbit => 'Top-angle orbit',
+      };
+
+  String get idleInstruction => switch (this) {
+        ScanPass.sideOrbit => 'Keep the phone level with the shoe side and orbit 360 degrees.',
+        ScanPass.topOrbit => 'Hold the phone 30-45 degrees above the shoe and orbit 360 degrees.',
+      };
+
+  String get recordingInstruction => switch (this) {
+        ScanPass.sideOrbit => 'Move slowly around the shoe side. Keep the shoe centered.',
+        ScanPass.topOrbit => 'Keep the upper visible while orbiting. Avoid scanning the sole.',
+      };
+}
+
 class CameraScanScreen extends StatefulWidget {
-  const CameraScanScreen({required this.metadata, super.key});
+  const CameraScanScreen({
+    required this.metadata,
+    required this.pass,
+    this.sideVideoFile,
+    super.key,
+  });
 
   final ScanMetadata metadata;
+  final ScanPass pass;
+  final File? sideVideoFile;
 
   @override
   State<CameraScanScreen> createState() => _CameraScanScreenState();
@@ -44,7 +76,7 @@ class _CameraScanScreenState extends State<CameraScanScreen> {
         setState(() => _error = 'No camera found on this device.');
         return;
       }
-      final controller = CameraController(cameras.first, ResolutionPreset.high);
+      final controller = CameraController(cameras.first, ResolutionPreset.high, enableAudio: false);
       await controller.initialize();
       setState(() => _controller = controller);
     } catch (error) {
@@ -56,7 +88,7 @@ class _CameraScanScreenState extends State<CameraScanScreen> {
   Widget build(BuildContext context) {
     final controller = _controller;
     return Scaffold(
-      appBar: AppBar(title: const Text('Guided scan')),
+      appBar: AppBar(title: Text(widget.pass.title)),
       body: SafeArea(
         child: _error != null
             ? Center(child: Text(_error!))
@@ -69,6 +101,8 @@ class _CameraScanScreenState extends State<CameraScanScreen> {
                         child: ScanGuideOverlay(
                           seconds: _seconds,
                           isRecording: _isRecording,
+                          idleInstruction: widget.pass.idleInstruction,
+                          recordingInstruction: widget.pass.recordingInstruction,
                         ),
                       ),
                       Positioned(
@@ -109,15 +143,35 @@ class _CameraScanScreenState extends State<CameraScanScreen> {
     }
     _timer?.cancel();
     final video = await controller.stopVideoRecording();
+    final videoFile = File(video.path);
     setState(() => _isRecording = false);
     if (!mounted) {
+      return;
+    }
+    if (widget.pass == ScanPass.sideOrbit) {
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(
+          builder: (_) => CameraScanScreen(
+            metadata: widget.metadata,
+            pass: ScanPass.topOrbit,
+            sideVideoFile: videoFile,
+          ),
+        ),
+      );
+      return;
+    }
+
+    final sideVideoFile = widget.sideVideoFile;
+    if (sideVideoFile == null) {
+      setState(() => _error = 'Side orbit video is missing. Restart the scan.');
       return;
     }
     Navigator.of(context).pushReplacement(
       MaterialPageRoute(
         builder: (_) => UploadProgressScreen(
           metadata: widget.metadata,
-          videoFile: File(video.path),
+          sideVideoFile: sideVideoFile,
+          topVideoFile: videoFile,
         ),
       ),
     );

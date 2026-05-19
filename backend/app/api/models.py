@@ -19,6 +19,19 @@ CONTENT_TYPE_BY_FILE_TYPE = {
     "obj": "text/plain",
     "mtl": "text/plain",
     "texture": "image/png",
+    "metadata": "application/json",
+    "quality-report": "application/json",
+    "obj-package": "application/zip",
+}
+
+FILENAME_BY_FILE_TYPE = {
+    "glb": "shoe_preview.glb",
+    "obj": "shoe.obj",
+    "mtl": "shoe.mtl",
+    "texture": "shoe_texture.png",
+    "metadata": "metadata.json",
+    "quality-report": "quality_report.json",
+    "obj-package": "shoe_obj_package.zip",
 }
 
 
@@ -43,7 +56,7 @@ def download_model_file(
     asset = service.get_for_user(model_asset_id, current_user)
     payload = service.file_bytes(asset, file_type)
     media_type = CONTENT_TYPE_BY_FILE_TYPE.get(file_type, "application/octet-stream")
-    filename = f"shoe_base.{file_type if file_type != 'texture' else 'png'}"
+    filename = FILENAME_BY_FILE_TYPE.get(file_type, f"shoe_asset.{file_type}")
     return Response(
         content=payload,
         media_type=media_type,

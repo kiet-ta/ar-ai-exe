@@ -52,11 +52,17 @@ class ScanSessionResponse(CamelModel):
     error_message: str | None = Field(default=None, alias="errorMessage")
     model_asset_id: str | None = Field(default=None, alias="modelAssetId")
     web_design_url: str | None = Field(default=None, alias="webDesignUrl")
+    uploaded_passes: list[str] = Field(default_factory=list, alias="uploadedPasses")
+    required_passes: list[str] = Field(default_factory=list, alias="requiredPasses")
     created_at: datetime = Field(alias="createdAt")
     updated_at: datetime = Field(alias="updatedAt")
 
 
 class ScanUploadResponse(CamelModel):
     scan_session: ScanSessionResponse = Field(alias="scanSession")
+    pass_type: str = Field(alias="passType")
+    uploaded_passes: list[str] = Field(alias="uploadedPasses")
+    required_passes: list[str] = Field(alias="requiredPasses")
+    ready_for_processing: bool = Field(alias="readyForProcessing")
     processing_started: bool = Field(alias="processingStarted")
     web_design_url: str = Field(alias="webDesignUrl")

@@ -14,6 +14,8 @@ export type ScanSession = {
   errorMessage: string | null;
   modelAssetId: string | null;
   webDesignUrl: string | null;
+  uploadedPasses: string[];
+  requiredPasses: string[];
   createdAt: string;
   updatedAt: string;
 };
@@ -26,6 +28,34 @@ export type ScanStatus = {
   updatedAt: string;
 };
 
+export type ReconstructionToolStatus = {
+  name: string;
+  required: boolean;
+  available: boolean;
+  path: string | null;
+  configuredValue: string;
+  hint: string;
+};
+
+export type ReconstructionResourceStatus = {
+  name: string;
+  ok: boolean;
+  available: number | null;
+  required: number;
+  unit: string;
+  message: string;
+};
+
+export type ReconstructionReadiness = {
+  ready: boolean;
+  message: string;
+  tools: ReconstructionToolStatus[];
+  resources: ReconstructionResourceStatus[];
+  settings: Record<string, string | number | boolean>;
+  missingTools: string[];
+  blockingReasons: string[];
+};
+
 export type ModelAsset = {
   id: string;
   scanSessionId: string;
@@ -33,7 +63,9 @@ export type ModelAsset = {
   objUrl: string;
   mtlUrl: string;
   textureUrl: string;
+  metadataUrl: string;
   qualityReportUrl: string;
+  objPackageZipUrl: string;
   qualityReport: Record<string, unknown>;
   createdAt: string;
   updatedAt?: string | null;

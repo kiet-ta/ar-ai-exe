@@ -41,10 +41,20 @@ class Settings(BaseSettings):
     demo_user_email: str = "demo@shoe-customizer.local"
     max_upload_size_mb: int = 250
 
-    enable_real_reconstruction: bool = False
+    enable_real_reconstruction: bool = True
     colmap_bin: str = "colmap"
     openmvs_bin_dir: str = ""
     blender_bin: str = "blender"
+    ffmpeg_bin: str = "ffmpeg"
+    reconstruction_frame_fps: float = 2.0
+    reconstruction_max_frames_per_pass: int = 90
+    reconstruction_min_brightness: float = 28.0
+    reconstruction_min_sharpness: float = 95.0
+    reconstruction_duplicate_hamming_threshold: int = 4
+    reconstruction_command_timeout_seconds: int = 7200
+    reconstruction_max_threads: int = 4
+    reconstruction_min_available_memory_gb: float = 4.0
+    reconstruction_min_free_storage_gb: float = 8.0
 
     model_config = SettingsConfigDict(
         env_file=BACKEND_ROOT / ".env",

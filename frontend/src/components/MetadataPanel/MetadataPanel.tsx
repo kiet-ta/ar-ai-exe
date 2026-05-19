@@ -6,6 +6,8 @@ type MetadataPanelProps = {
 };
 
 export function MetadataPanel({ scanSession, modelAsset }: MetadataPanelProps) {
+  const qualityReport = modelAsset?.qualityReport;
+
   return (
     <aside className="metadata-panel">
       <section className="panel-section">
@@ -15,9 +17,21 @@ export function MetadataPanel({ scanSession, modelAsset }: MetadataPanelProps) {
             <dt>Session</dt>
             <dd>{scanSession.id}</dd>
             <dt>Status</dt>
-            <dd>{scanSession.status}</dd>
+            <dd>
+              <span className={`status-pill status-${scanSession.status}`}>{scanStatusLabel(scanSession.status)}</span>
+            </dd>
+            <dt>Videos</dt>
+            <dd>
+              {scanSession.uploadedPasses.length}/{scanSession.requiredPasses.length} uploaded
+            </dd>
             <dt>Model</dt>
             <dd>{scanSession.modelAssetId ?? "pending"}</dd>
+            {scanSession.errorMessage ? (
+              <>
+                <dt>Error</dt>
+                <dd className="error-text">{scanSession.errorMessage}</dd>
+              </>
+            ) : null}
           </dl>
         ) : (
           <p className="muted">No scan loaded.</p>
@@ -26,19 +40,59 @@ export function MetadataPanel({ scanSession, modelAsset }: MetadataPanelProps) {
 
       <section className="panel-section">
         <h2>Quality</h2>
-        {modelAsset ? (
-          <dl>
-            {Object.entries(modelAsset.qualityReport).map(([key, value]) => (
-              <div key={key}>
-                <dt>{key}</dt>
-                <dd>{String(value)}</dd>
+        {qualityReport ? (
+          <div className="quality-stack">
+            <dl className="quality-summary">
+              <dt>Overall</dt>
+              <dd>{formatQualityValue(qualityReport.overallScore)}</dd>
+              <dt>Texture</dt>
+              <dd>{formatQualityValue(qualityReport.textureConfidence)}</dd>
+              <dt>Geometry</dt>
+              <dd>{formatQualityValue(qualityReport.geometryConfidence)}</dd>
+              <dt>Coverage</dt>
+              <dd>{formatQualityValue(qualityReport.coverageScore)}</dd>
+            </dl>
+            {Array.isArray(qualityReport.warnings) && qualityReport.warnings.length > 0 ? (
+              <div className="warning-list">
+                {qualityReport.warnings.map((warning) => (
+                  <p key={String(warning)}>{String(warning)}</p>
+                ))}
               </div>
-            ))}
-          </dl>
+            ) : null}
+          </div>
         ) : (
           <p className="muted">Quality report appears after processing completes.</p>
         )}
       </section>
     </aside>
   );
+}
+
+function scanStatusLabel(status: string): string {
+  const labels: Record<string, string> = {
+    created: "Created",
+    waiting_for_uploads: "Waiting for videos",
+    uploaded: "Queued",
+    extracting_frames: "Extracting frames",
+    filtering_frames: "Filtering frames",
+    preparing_reconstruction: "Preparing",
+    reconstructing: "Reconstructing",
+    cleaning_mesh: "Cleaning mesh",
+    uv_unwrapping: "UV unwrap",
+    texture_baking: "Texture bake",
+    exporting: "Exporting",
+    completed: "Completed",
+    failed: "Failed",
+  };
+  return labels[status] ?? status;
+}
+
+function formatQualityValue(value: unknown): string {
+  if (typeof value === "number") {
+    return Number.isInteger(value) ? String(value) : value.toFixed(1);
+  }
+  if (typeof value === "string") {
+    return value;
+  }
+  return "n/a";
 }

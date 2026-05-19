@@ -1,9 +1,9 @@
-import 'dart:convert';
 import 'dart:io';
 
 import 'package:dio/dio.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
+import '../models/reconstruction_readiness.dart';
 import '../models/scan_metadata.dart';
 import '../models/scan_upload_result.dart';
 
@@ -68,39 +68,55 @@ class BackendApi {
     await _secureStorage.delete(key: _tokenKey);
   }
 
-  Future<String> createScanSession() async {
+  Future<String> createScanSession({required ScanMetadata metadata}) async {
     await _ensureToken();
     final response = await _dio.post<Map<String, dynamic>>(
       '$_baseUrl/api/scan-sessions',
-      data: <String, dynamic>{},
+      data: {'metadata': metadata.toJson()},
       options: _authOptions(),
     );
     return response.data?['id'] as String;
   }
 
-  Future<ScanUploadResult> uploadScan({
+  Future<ReconstructionReadiness> getReconstructionReadiness() async {
+    final response = await _dio.get<Map<String, dynamic>>(
+      '$_baseUrl/api/system/reconstruction-readiness',
+    );
+    return ReconstructionReadiness.fromJson(response.data ?? const <String, dynamic>{});
+  }
+
+  Future<ScanUploadResult> uploadScanPass({
     required String scanSessionId,
+    required String passType,
     required File videoFile,
-    required ScanMetadata metadata,
     required void Function(int sent, int total) onProgress,
   }) async {
     await _ensureToken();
     final formData = FormData.fromMap({
-      'metadata': jsonEncode(metadata.toJson()),
       'video': await MultipartFile.fromFile(
         videoFile.path,
-        filename: 'raw_video.mp4',
+        filename: '$passType.mp4',
       ),
     });
 
     final response = await _dio.post<Map<String, dynamic>>(
-      '$_baseUrl/api/scan-sessions/$scanSessionId/upload-video',
+      '$_baseUrl/api/scan-sessions/$scanSessionId/videos/$passType',
       data: formData,
       options: _authOptions(contentType: 'multipart/form-data'),
       onSendProgress: onProgress,
     );
 
     return ScanUploadResult.fromJson(response.data!);
+  }
+
+  Future<String> startProcessing({required String scanSessionId}) async {
+    await _ensureToken();
+    final response = await _dio.post<Map<String, dynamic>>(
+      '$_baseUrl/api/scan-sessions/$scanSessionId/process',
+      data: <String, dynamic>{},
+      options: _authOptions(),
+    );
+    return response.data?['status'] as String? ?? 'uploaded';
   }
 
   Future<void> _storeToken(String? token) async {

@@ -10,17 +10,17 @@ Repository hien tai da chuyen backend tu SQLite-only sang SQLAlchemy co Neon Pos
 
 ```mermaid
 flowchart TD
-    A["Flutter Mobile Scanner"] --> B["Record guided shoe video"]
-    B --> C["Collect shoe metadata"]
+    A["Flutter Mobile Scanner"] --> B["Record side orbit video"]
+    B --> C["Record top-angle orbit video"]
     C --> D["POST /api/auth/demo-login"]
     D --> E["POST /api/scan-sessions"]
     E --> F["Insert scan session into Neon Postgres"]
-    F --> G["POST /api/scan-sessions/{id}/upload-video"]
-    G --> H["Store raw MP4 and metadata JSON in backend storage"]
+    F --> G["Upload side-orbit and top-orbit MP4"]
+    G --> H["Store raw MP4 files and metadata JSON"]
     H --> I["Update scan status in Neon Postgres"]
     I --> J["Background reconstruction worker"]
     J --> K["Extract frames"]
-    K --> L["Generate or process GLB, OBJ, MTL, texture"]
+    K --> L["Run COLMAP OpenMVS Blender pipeline"]
     L --> M["Insert model asset metadata into Neon Postgres"]
     M --> N["Vite React Web Editor"]
     N --> O["GET scan session and model metadata"]
@@ -84,19 +84,18 @@ flowchart TD
 ```mermaid
 stateDiagram-v2
     [*] --> created
-    created --> uploaded: raw video and metadata saved
+    created --> waiting_for_uploads: first video pass saved
+    waiting_for_uploads --> uploaded: both video passes saved
     uploaded --> extracting_frames: worker starts
-    extracting_frames --> reconstructing
+    extracting_frames --> filtering_frames
+    filtering_frames --> preparing_reconstruction
+    preparing_reconstruction --> reconstructing
     reconstructing --> cleaning_mesh
-    cleaning_mesh --> uv_unwrapping
-    uv_unwrapping --> texture_baking
-    texture_baking --> exporting
+    cleaning_mesh --> exporting
     exporting --> completed
     extracting_frames --> failed
     reconstructing --> failed
     cleaning_mesh --> failed
-    uv_unwrapping --> failed
-    texture_baking --> failed
     exporting --> failed
     completed --> [*]
     failed --> [*]
@@ -140,7 +139,8 @@ erDiagram
         string id PK
         string user_id FK
         string status
-        text raw_video_path
+        text side_video_path
+        text top_video_path
         text metadata_path
         text error_message
         datetime created_at
@@ -154,7 +154,9 @@ erDiagram
         text obj_path
         text mtl_path
         text texture_path
+        text metadata_path
         text quality_report_path
+        text obj_package_zip_path
         datetime created_at
     }
 

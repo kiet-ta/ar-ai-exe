@@ -4,11 +4,15 @@ class ScanGuideOverlay extends StatelessWidget {
   const ScanGuideOverlay({
     required this.seconds,
     required this.isRecording,
+    required this.idleInstruction,
+    required this.recordingInstruction,
     super.key,
   });
 
   final int seconds;
   final bool isRecording;
+  final String idleInstruction;
+  final String recordingInstruction;
 
   @override
   Widget build(BuildContext context) {
@@ -22,15 +26,15 @@ class ScanGuideOverlay extends StatelessWidget {
             children: [
               DecoratedBox(
                 decoration: BoxDecoration(
-                  color: Colors.black.withOpacity(0.55),
+                  color: Colors.black.withValues(alpha: 0.55),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Padding(
                   padding: const EdgeInsets.all(12),
                   child: Text(
                     isRecording
-                        ? 'Move slowly around the shoe. Keep it inside the frame. $seconds s'
-                        : 'Place the shoe inside the guide frame. Recommended scan: 30-60 s.',
+                        ? '$recordingInstruction $seconds s'
+                        : '$idleInstruction Recommended scan: 30-60 s.',
                     style: const TextStyle(color: Colors.white),
                     textAlign: TextAlign.center,
                   ),

@@ -1,9 +1,10 @@
 import { Download, ImagePlus, Save, Type } from "lucide-react";
 
-import type { DesignConfig, ExportPackage } from "../../types";
+import type { DesignConfig, ExportPackage, ModelAsset } from "../../types";
 
 type EditorPanelsProps = {
   config: DesignConfig | null;
+  modelAsset: ModelAsset | null;
   designName: string;
   isSaving: boolean;
   exportPackage: ExportPackage | null;
@@ -12,10 +13,12 @@ type EditorPanelsProps = {
   onSave: () => void;
   onExport: () => void;
   onDownload: () => void;
+  onDownloadModelFile: (urlPath: string, filename: string) => void;
 };
 
 export function EditorPanels({
   config,
+  modelAsset,
   designName,
   isSaving,
   exportPackage,
@@ -24,6 +27,7 @@ export function EditorPanels({
   onSave,
   onExport,
   onDownload,
+  onDownloadModelFile,
 }: EditorPanelsProps) {
   if (!config) {
     return (
@@ -124,6 +128,45 @@ export function EditorPanels({
           </button>
         ) : null}
       </section>
+
+      {modelAsset ? (
+        <section className="panel-section">
+          <h3>Reconstruction Files</h3>
+          <div className="download-grid">
+            <button
+              type="button"
+              onClick={() => onDownloadModelFile(modelAsset.glbUrl, "shoe_preview.glb")}
+            >
+              <Download size={16} aria-hidden="true" />
+              GLB
+            </button>
+            <button type="button" onClick={() => onDownloadModelFile(modelAsset.objUrl, "shoe.obj")}>
+              <Download size={16} aria-hidden="true" />
+              OBJ
+            </button>
+            <button type="button" onClick={() => onDownloadModelFile(modelAsset.mtlUrl, "shoe.mtl")}>
+              <Download size={16} aria-hidden="true" />
+              MTL
+            </button>
+            <button
+              type="button"
+              onClick={() => onDownloadModelFile(modelAsset.textureUrl, "shoe_texture.png")}
+            >
+              <Download size={16} aria-hidden="true" />
+              Texture
+            </button>
+            <button
+              type="button"
+              onClick={() =>
+                onDownloadModelFile(modelAsset.objPackageZipUrl, "shoe_obj_package.zip")
+              }
+            >
+              <Download size={16} aria-hidden="true" />
+              OBJ ZIP
+            </button>
+          </div>
+        </section>
+      ) : null}
     </aside>
   );
 }

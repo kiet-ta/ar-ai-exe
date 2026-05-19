@@ -1,3 +1,4 @@
+import os
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
@@ -16,19 +17,40 @@ class CommandResult:
 
 
 class CommandRunner:
-    def run(self, command: list[str], log_path: Path | None = None) -> CommandResult:
-        result = subprocess.run(
-            command,
-            capture_output=True,
-            check=False,
-            text=True,
-        )
-        command_result = CommandResult(
-            command=command,
-            return_code=result.returncode,
-            stdout=result.stdout,
-            stderr=result.stderr,
-        )
+    def run(
+        self,
+        command: list[str],
+        log_path: Path | None = None,
+        cwd: Path | None = None,
+        timeout: int | None = None,
+        env: dict[str, str] | None = None,
+    ) -> CommandResult:
+        try:
+            merged_env = os.environ.copy()
+            if env:
+                merged_env.update(env)
+            result = subprocess.run(
+                command,
+                capture_output=True,
+                check=False,
+                text=True,
+                cwd=cwd,
+                timeout=timeout,
+                env=merged_env,
+            )
+            command_result = CommandResult(
+                command=command,
+                return_code=result.returncode,
+                stdout=result.stdout,
+                stderr=result.stderr,
+            )
+        except subprocess.TimeoutExpired as exc:
+            command_result = CommandResult(
+                command=command,
+                return_code=124,
+                stdout=exc.stdout or "",
+                stderr=f"Command timed out after {timeout} seconds.",
+            )
         if log_path:
             self.append_log(log_path, command_result)
         return command_result

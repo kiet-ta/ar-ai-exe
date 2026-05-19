@@ -13,7 +13,7 @@ Flutter Mobile Scanner
 
 ## MVP Boundaries
 
-Mobile is capture-only. It records a guided shoe scan video, collects metadata, and uploads both to the backend. Mobile does not run real-time 3D reconstruction.
+Mobile is capture-only. It records two guided shoe scan videos, collects metadata, and uploads both to the backend. The required passes are side orbit and top-angle orbit. Mobile does not run real-time 3D reconstruction.
 
 The backend owns scan sessions, local storage, Neon Postgres persistence, reconstruction jobs, model outputs, design drafts, and export packages.
 
@@ -46,14 +46,16 @@ The MVP should include authentication and authorization foundations even while l
 
 ## Reconstruction Direction
 
-Development starts with mock reconstruction mode:
+The reconstruction worker is wired for local command-line photogrammetry tools:
 
 ```text
-video upload
--> frame extraction
--> sample or placeholder shoe_base.glb
--> generated OBJ/MTL/texture placeholders
--> completed scan session
+side_orbit.mp4 + top_orbit.mp4
+-> FFmpeg frame extraction
+-> frame filtering
+-> COLMAP sparse reconstruction
+-> OpenMVS dense mesh and texture
+-> Blender GLB export
+-> GLB/OBJ/MTL/texture/metadata/quality outputs
 ```
 
-The service boundary must remain compatible with future COLMAP/OpenMVS/Blender command execution.
+There is no mock fallback in the real reconstruction path. Missing toolchain binaries produce a failed scan status with a configuration error.

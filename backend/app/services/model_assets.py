@@ -32,7 +32,9 @@ class ModelAssetService:
             "obj": asset.obj_path,
             "mtl": asset.mtl_path,
             "texture": asset.texture_path,
+            "metadata": asset.metadata_path,
             "quality-report": asset.quality_report_path,
+            "obj-package": asset.obj_package_zip_path,
         }
         if file_type not in key_by_type:
             raise HTTPException(
@@ -40,6 +42,11 @@ class ModelAssetService:
                 detail="Unsupported model file type.",
             )
         key = key_by_type[file_type]
+        if not key:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"{file_type} file not found.",
+            )
         if not self.storage.exists(key):
             legacy_path = Path(key)
             if not legacy_path.exists():
@@ -68,7 +75,9 @@ class ModelAssetService:
             objUrl=f"/api/models/{asset.id}/download/obj",
             mtlUrl=f"/api/models/{asset.id}/download/mtl",
             textureUrl=f"/api/models/{asset.id}/download/texture",
+            metadataUrl=f"/api/models/{asset.id}/download/metadata",
             qualityReportUrl=f"/api/models/{asset.id}/quality-report",
+            objPackageZipUrl=f"/api/models/{asset.id}/download/obj-package",
             qualityReport=quality_report,
             createdAt=asset.created_at,
         )

@@ -9,12 +9,14 @@ import 'scan_result_screen.dart';
 class UploadProgressScreen extends StatefulWidget {
   const UploadProgressScreen({
     required this.metadata,
-    required this.videoFile,
+    required this.sideVideoFile,
+    required this.topVideoFile,
     super.key,
   });
 
   final ScanMetadata metadata;
-  final File videoFile;
+  final File sideVideoFile;
+  final File topVideoFile;
 
   @override
   State<UploadProgressScreen> createState() => _UploadProgressScreenState();
@@ -23,7 +25,10 @@ class UploadProgressScreen extends StatefulWidget {
 class _UploadProgressScreenState extends State<UploadProgressScreen> {
   final _api = BackendApi();
   double _progress = 0;
+  int _step = 0;
   String _message = 'Preparing upload';
+  bool _failed = false;
+  bool _uploading = false;
 
   @override
   void initState() {
@@ -32,21 +37,50 @@ class _UploadProgressScreenState extends State<UploadProgressScreen> {
   }
 
   Future<void> _upload() async {
+    if (_uploading) {
+      return;
+    }
+    setState(() {
+      _failed = false;
+      _uploading = true;
+      _progress = 0;
+      _step = 0;
+      _message = 'Checking backend readiness';
+    });
     try {
-      final scanSessionId = await _api.createScanSession();
-      final result = await _api.uploadScan(
+      final readiness = await _api.getReconstructionReadiness();
+      if (!readiness.ready) {
+        throw Exception(readiness.userMessage);
+      }
+
+      final scanSessionId = await _api.createScanSession(metadata: widget.metadata);
+      _safeSetState(() {
+        _step = 1;
+        _message = 'Uploading side orbit';
+      });
+      await _api.uploadScanPass(
         scanSessionId: scanSessionId,
-        videoFile: widget.videoFile,
-        metadata: widget.metadata,
-        onProgress: (sent, total) {
-          if (total > 0) {
-            setState(() {
-              _progress = sent / total;
-              _message = 'Uploading ${(_progress * 100).round()}%';
-            });
-          }
-        },
+        passType: 'side-orbit',
+        videoFile: widget.sideVideoFile,
+        onProgress: _updateProgress,
       );
+      _safeSetState(() {
+        _step = 2;
+        _progress = 0;
+        _message = 'Uploading top-angle orbit';
+      });
+      final result = await _api.uploadScanPass(
+        scanSessionId: scanSessionId,
+        passType: 'top-orbit',
+        videoFile: widget.topVideoFile,
+        onProgress: _updateProgress,
+      );
+      _safeSetState(() {
+        _step = 3;
+        _progress = 0;
+        _message = 'Starting reconstruction';
+      });
+      final processingStatus = await _api.startProcessing(scanSessionId: scanSessionId);
       if (!mounted) {
         return;
       }
@@ -54,15 +88,46 @@ class _UploadProgressScreenState extends State<UploadProgressScreen> {
         MaterialPageRoute(
           builder: (_) => ScanResultScreen(
             scanSessionId: result.scanSessionId,
-            status: result.status,
-            processingStarted: result.processingStarted,
+            status: processingStatus,
+            processingStarted: true,
             webDesignUrl: result.webDesignUrl,
           ),
         ),
       );
     } catch (error) {
-      setState(() => _message = 'Upload failed: $error');
+      _safeSetState(() {
+        _failed = true;
+        _message = 'Upload failed: $error';
+      });
+    } finally {
+      _safeSetState(() => _uploading = false);
     }
+  }
+
+  void _updateProgress(int sent, int total) {
+    if (total <= 0) {
+      return;
+    }
+    _safeSetState(() {
+      _progress = sent / total;
+      _message = '${_stepLabel()} ${(_progress * 100).round()}%';
+    });
+  }
+
+  String _stepLabel() {
+    return switch (_step) {
+      1 => 'Uploading side orbit',
+      2 => 'Uploading top-angle orbit',
+      3 => 'Starting reconstruction',
+      _ => 'Preparing upload',
+    };
+  }
+
+  void _safeSetState(VoidCallback update) {
+    if (!mounted) {
+      return;
+    }
+    setState(update);
   }
 
   @override
@@ -78,6 +143,16 @@ class _UploadProgressScreenState extends State<UploadProgressScreen> {
               LinearProgressIndicator(value: _progress == 0 ? null : _progress),
               const SizedBox(height: 16),
               Text(_message, textAlign: TextAlign.center),
+              const SizedBox(height: 8),
+              Text(_step == 0 ? 'Preparing' : 'Step $_step of 3', textAlign: TextAlign.center),
+              if (_failed) ...[
+                const SizedBox(height: 18),
+                OutlinedButton.icon(
+                  onPressed: _uploading ? null : _upload,
+                  icon: const Icon(Icons.refresh),
+                  label: const Text('Retry upload'),
+                ),
+              ],
             ],
           ),
         ),

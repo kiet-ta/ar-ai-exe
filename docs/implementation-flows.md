@@ -81,15 +81,15 @@ This is the full project flow the repository is being prepared for. Only Phase 0
 
 ```mermaid
 flowchart TD
-    A["Flutter Mobile Scanner"] --> B["Record guided shoe video"]
-    B --> C["Collect shoe metadata"]
-    C --> D["Upload video and metadata"]
+    A["Flutter Mobile Scanner"] --> B["Record side orbit video"]
+    B --> C["Record top-angle orbit video"]
+    C --> D["Upload videos and metadata"]
     D --> E["FastAPI scan session API"]
     E --> F["Store raw scan files"]
     F --> G["Neon Postgres scan status tracking"]
-    G --> H["Automatic processing job"]
+    G --> H["Async processing job"]
     H --> I["Extract frames with FFmpeg"]
-    I --> J["COLMAP and OpenMVS ready pipeline"]
+    I --> J["COLMAP and OpenMVS reconstruction"]
     J --> K["Mesh cleanup"]
     K --> L["UV unwrap"]
     L --> M["Texture bake"]
@@ -108,13 +108,13 @@ flowchart TD
 flowchart TD
     A["POST /api/auth/demo-login"] --> B["Return bearer token"]
     B --> C["POST /api/scan-sessions"]
-    C --> D["Create Neon Postgres ScanSession"]
-    D --> E["POST /api/scan-sessions/{id}/upload-video"]
-    E --> F["Store raw_video.mp4 and metadata.json"]
-    F --> G["Queue BackgroundTasks processing"]
-    G --> H["Extract frames or write placeholder frame"]
-    H --> I["Generate mock shoe_base.glb"]
-    I --> J["Generate OBJ MTL texture and quality report"]
+    C --> D["Create ScanSession with shoe metadata"]
+    D --> E["POST /api/scan-sessions/{id}/videos/side-orbit"]
+    E --> F["POST /api/scan-sessions/{id}/videos/top-orbit"]
+    F --> G["POST /api/scan-sessions/{id}/process"]
+    G --> H["Extract and filter frames"]
+    H --> I["Run COLMAP OpenMVS Blender"]
+    I --> J["Generate GLB OBJ MTL texture metadata quality ZIP"]
     J --> K["Create ModelAsset"]
     K --> L["GET /api/models/{id}"]
     L --> M["POST /api/designs"]
@@ -129,19 +129,18 @@ flowchart TD
 ```mermaid
 stateDiagram-v2
     [*] --> created
-    created --> uploaded: video and metadata saved
-    uploaded --> extracting_frames: automatic processing starts
-    extracting_frames --> reconstructing
+    created --> waiting_for_uploads: first video pass saved
+    waiting_for_uploads --> uploaded: both video passes saved
+    uploaded --> extracting_frames: process endpoint starts worker
+    extracting_frames --> filtering_frames
+    filtering_frames --> preparing_reconstruction
+    preparing_reconstruction --> reconstructing
     reconstructing --> cleaning_mesh
-    cleaning_mesh --> uv_unwrapping
-    uv_unwrapping --> texture_baking
-    texture_baking --> exporting
+    cleaning_mesh --> exporting
     exporting --> completed
     extracting_frames --> failed
     reconstructing --> failed
     cleaning_mesh --> failed
-    uv_unwrapping --> failed
-    texture_baking --> failed
     exporting --> failed
     completed --> [*]
     failed --> [*]
@@ -205,11 +204,13 @@ flowchart TD
     D --> E["Start recording"]
     E --> F["Stop recording"]
     F --> G["UploadProgressScreen"]
-    G --> H["POST /api/auth/demo-login"]
-    H --> I["POST /api/scan-sessions"]
-    I --> J["Upload MP4 and metadata"]
-    J --> K["ScanResultScreen"]
-    K --> L["Show scan session ID and status"]
+    G --> H["CameraScanScreen top-angle pass"]
+    H --> I["Record second MP4"]
+    I --> J["UploadProgressScreen"]
+    J --> K["POST /api/scan-sessions"]
+    K --> L["Upload side-orbit and top-orbit"]
+    L --> M["POST /process"]
+    M --> N["ScanResultScreen"]
 ```
 
 ## Planned Auth And Demo Login Flow
@@ -233,7 +234,7 @@ flowchart TD
 flowchart TD
     P0["Phase 0 Repository and FastAPI foundation"] --> P1["Phase 1 Backend scan session API"]
     P1 --> P2["Phase 2 Flutter mobile scanner"]
-    P1 --> P3["Phase 3 Frame extraction and mock reconstruction"]
+    P1 --> P3["Phase 3 Frame extraction and real reconstruction"]
     P3 --> P4["Phase 4 COLMAP and OpenMVS hooks"]
     P3 --> P5["Phase 5 Vite React 3D viewer"]
     P5 --> P6["Phase 6 Web decoration editor"]
