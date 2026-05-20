@@ -6,8 +6,8 @@ This guide deploys the current MVP E2E flow:
 flowchart TD
     A["Android app login/register"] --> B["Record guided scan video"]
     B --> C["Upload MP4 + metadata to HTTPS API"]
-    C --> D["FastAPI stores metadata in Neon Postgres"]
-    D --> E["Mock reconstruction creates GLB/OBJ/MTL/texture"]
+    C --> D["FastAPI stores videos and metadata"]
+    D --> E["Backend runs FFmpeg COLMAP OpenMVS Blender"]
     E --> F["Android receives webDesignUrl"]
     F --> G["Open https://domain/design?scanId=..."]
     G --> H["Web auto-loads scan and GLB"]
@@ -83,6 +83,7 @@ flowchart LR
     B -->|"static files"| D["React dist"]
     C -->|"TLS outbound"| E["Neon Postgres"]
     C -->|"local volume or S3/R2"| F["Artifact storage"]
+    C -->|"CPU-heavy local binaries"| G["FFmpeg COLMAP OpenMVS Blender"]
 ```
 
 Public host ports:
@@ -96,6 +97,35 @@ Public host ports:
 | `5173/tcp` | No | Vite dev server is never used in production |
 | `5432/tcp` | No | Postgres is Neon-managed, not hosted on this VPS |
 
+## Backend Reconstruction Toolchain Image
+
+The backend Docker image now builds and ships the reconstruction runtime instead of relying on manual VPS installs:
+
+```mermaid
+flowchart TD
+    A["docker compose build backend"] --> B["Build OpenMVS v2.4.0 from source"]
+    B --> C["Copy OpenMVS binaries to /opt/openmvs/bin"]
+    A --> D["Install Debian packages"]
+    D --> E["ffmpeg colmap blender runtime libraries"]
+    C --> F["FastAPI container starts"]
+    E --> F
+    F --> G["/api/system/reconstruction-readiness"]
+    G --> H{"ready?"}
+    H -->|"yes"| I["mobile uploads can process immediately"]
+    H -->|"no"| J["scan is preserved, status toolchain_unavailable"]
+```
+
+Build characteristics:
+
+| Concern | Docker/VPS self-contained toolchain |
+|---|---|
+| Scalability | Good for one CPU worker per VPS. Split reconstruction into a separate worker service before high traffic. |
+| Maintainability | Stronger than manual installs because binary versions are pinned in `backend/Dockerfile` and Compose. |
+| Security | Backend port remains private. Review OpenMVS AGPL-3.0 obligations before commercial network use. |
+| Performance | CPU-only reconstruction is slow but predictable. Use 4+ vCPU, 12-16 GB RAM, and 40+ GB free disk for practical builds. |
+| User experience | Mobile can upload scans to one HTTPS API; users see queued, processing, completed, failed, or toolchain_unavailable status. |
+
+The first build can take tens of minutes because OpenMVS compiles from source and Blender/COLMAP pull large system dependencies.
 ## VPS Setup Steps
 
 1. Point DNS `A` record to the VPS public IP:
@@ -171,10 +201,10 @@ Allow: 443/tcp from 0.0.0.0/0
 Deny: 8000, 5173, 5432, all other inbound ports
 ```
 
-7. Build and start:
+7. Build and start. The first backend image build is intentionally heavy because it compiles OpenMVS:
 
 ```bash
-docker compose --env-file deploy/.env up -d --build
+DOCKER_BUILDKIT=1 docker compose --env-file deploy/.env up -d --build
 ```
 
 8. Verify:
@@ -183,6 +213,7 @@ docker compose --env-file deploy/.env up -d --build
 docker compose ps
 curl -I https://your-domain.example.com
 curl https://your-domain.example.com/health
+curl https://your-domain.example.com/api/system/reconstruction-readiness
 ```
 
 9. View logs when needed:
@@ -196,10 +227,10 @@ docker compose logs -f backend
 
 ```bash
 git pull
-docker compose --env-file deploy/.env up -d --build
+DOCKER_BUILDKIT=1 docker compose --env-file deploy/.env up -d --build
 ```
 
-The backend container runs `alembic upgrade head` before starting Uvicorn.
+The backend container runs `alembic upgrade head` before starting Uvicorn. Rebuild after changing `backend/Dockerfile`, `OPENMVS_REF`, or reconstruction dependencies.
 
 ## Storage Options
 

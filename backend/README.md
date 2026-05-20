@@ -90,7 +90,7 @@ DATABASE_URL=sqlite:///./storage/app.db
 DATABASE_AUTO_CREATE_TABLES=true
 ENABLE_REAL_RECONSTRUCTION=true
 COLMAP_BIN=colmap
-OPENMVS_BIN_DIR=
+OPENMVS_BIN_DIR=/opt/openmvs/bin
 BLENDER_BIN=blender
 FFMPEG_BIN=ffmpeg
 RECONSTRUCTION_FRAME_FPS=2.0
@@ -110,7 +110,7 @@ Check local readiness with:
 Invoke-RestMethod http://127.0.0.1:8000/api/system/reconstruction-readiness
 ```
 
-The reconstruction worker does not fall back to mock assets. If any required binary or resource guard is missing, the scan status becomes `failed` with an actionable toolchain error.
+The reconstruction worker does not fall back to mock assets. In Docker/VPS deploys, `backend/Dockerfile` builds OpenMVS and installs FFmpeg, COLMAP, and Blender. If any required binary or resource guard is missing, `/process` returns `toolchain_unavailable` and keeps the uploaded scan for retry after deployment is fixed.
 
 For Neon Postgres, set `DATABASE_URL` to the pooled Neon connection string and disable
 runtime schema creation:

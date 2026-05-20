@@ -161,14 +161,14 @@ Response:
 
 ### POST /api/scan-sessions/{scan_session_id}/process
 
-Starts asynchronous backend reconstruction. Both `side_orbit` and `top_orbit` must already be uploaded.
+Starts asynchronous backend reconstruction. Both `side_orbit` and `top_orbit` must already be uploaded. If the container toolchain is not ready, the scan remains stored and the status becomes `toolchain_unavailable` instead of losing the upload.
 
 Response:
 
 ```json
 {
   "id": "scan_abc",
-  "status": "uploaded",
+  "status": "queued",
   "errorMessage": null,
   "modelAssetId": null,
   "updatedAt": "2026-05-19T01:01:00"
@@ -185,6 +185,8 @@ Possible states include:
 created
 waiting_for_uploads
 uploaded
+queued
+toolchain_unavailable
 extracting_frames
 filtering_frames
 preparing_reconstruction

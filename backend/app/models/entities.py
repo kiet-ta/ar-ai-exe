@@ -15,6 +15,8 @@ class ScanStatus:
     CREATED = "created"
     WAITING_FOR_UPLOADS = "waiting_for_uploads"
     UPLOADED = "uploaded"
+    QUEUED = "queued"
+    TOOLCHAIN_UNAVAILABLE = "toolchain_unavailable"
     EXTRACTING_FRAMES = "extracting_frames"
     FILTERING_FRAMES = "filtering_frames"
     PREPARING_RECONSTRUCTION = "preparing_reconstruction"

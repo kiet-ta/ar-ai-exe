@@ -72,7 +72,9 @@ function scanStatusLabel(status: string): string {
   const labels: Record<string, string> = {
     created: "Created",
     waiting_for_uploads: "Waiting for videos",
-    uploaded: "Queued",
+    uploaded: "Uploaded",
+    queued: "Queued",
+    toolchain_unavailable: "Toolchain unavailable",
     extracting_frames: "Extracting frames",
     filtering_frames: "Filtering frames",
     preparing_reconstruction: "Preparing",

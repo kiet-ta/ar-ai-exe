@@ -3,6 +3,8 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
+      args:
+        OPENMVS_REF: v2.4.0
     restart: unless-stopped
     env_file:
       - ./deploy/backend.env
@@ -17,7 +19,7 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 30s
+      start_period: 120s
 
   web:
     build:

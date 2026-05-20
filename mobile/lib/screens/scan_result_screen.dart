@@ -48,7 +48,9 @@ class ScanResultScreen extends StatelessWidget {
                     Text(
                       processingStarted
                           ? 'Both shoe videos uploaded. Reconstruction is running on the backend and may take several minutes.'
-                          : 'Both shoe videos uploaded. Processing has not started yet.',
+                          : status == 'toolchain_unavailable'
+                              ? 'Both shoe videos uploaded. Backend reconstruction toolchain is not available yet. Keep this scan ID and retry processing after deployment is fixed.'
+                              : 'Both shoe videos uploaded. Processing has not started yet.',
                     ),
                     const SizedBox(height: 24),
                     Text('Web design URL', style: Theme.of(context).textTheme.titleMedium),
@@ -122,7 +124,9 @@ class ScanResultScreen extends StatelessWidget {
 
   String _statusLabel(String value) {
     return switch (value) {
-      'uploaded' => 'Queued',
+      'uploaded' => 'Uploaded',
+      'queued' => 'Queued',
+      'toolchain_unavailable' => 'Toolchain unavailable',
       'extracting_frames' => 'Extracting frames',
       'filtering_frames' => 'Filtering frames',
       'preparing_reconstruction' => 'Preparing reconstruction',

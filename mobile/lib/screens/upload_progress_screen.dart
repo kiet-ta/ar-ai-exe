@@ -45,14 +45,9 @@ class _UploadProgressScreenState extends State<UploadProgressScreen> {
       _uploading = true;
       _progress = 0;
       _step = 0;
-      _message = 'Checking backend readiness';
+      _message = 'Creating scan session';
     });
     try {
-      final readiness = await _api.getReconstructionReadiness();
-      if (!readiness.ready) {
-        throw Exception(readiness.userMessage);
-      }
-
       final scanSessionId = await _api.createScanSession(metadata: widget.metadata);
       _safeSetState(() {
         _step = 1;
@@ -81,6 +76,8 @@ class _UploadProgressScreenState extends State<UploadProgressScreen> {
         _message = 'Starting reconstruction';
       });
       final processingStatus = await _api.startProcessing(scanSessionId: scanSessionId);
+      final processingStarted =
+          processingStatus != 'toolchain_unavailable' && processingStatus != 'failed';
       if (!mounted) {
         return;
       }
@@ -89,7 +86,7 @@ class _UploadProgressScreenState extends State<UploadProgressScreen> {
           builder: (_) => ScanResultScreen(
             scanSessionId: result.scanSessionId,
             status: processingStatus,
-            processingStarted: true,
+            processingStarted: processingStarted,
             webDesignUrl: result.webDesignUrl,
           ),
         ),

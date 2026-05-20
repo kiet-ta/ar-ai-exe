@@ -9,6 +9,12 @@ def process_scan_session(scan_session_id: str) -> None:
     try:
         ReconstructionService(db).process(scan_session_id)
     except Exception as exc:
-        ScanSessionService(db).set_status(scan_session_id, ScanStatus.FAILED, str(exc))
+        message = str(exc)
+        status = (
+            ScanStatus.TOOLCHAIN_UNAVAILABLE
+            if message.startswith("Reconstruction is not ready:")
+            else ScanStatus.FAILED
+        )
+        ScanSessionService(db).set_status(scan_session_id, status, message)
     finally:
         db.close()

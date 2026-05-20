@@ -43,6 +43,11 @@ class ScanStatusResponse(CamelModel):
     error_message: str | None = Field(default=None, alias="errorMessage")
     model_asset_id: str | None = Field(default=None, alias="modelAssetId")
     updated_at: datetime = Field(alias="updatedAt")
+    uploaded_passes: list[str] = Field(default_factory=list, alias="uploadedPasses")
+    required_passes: list[str] = Field(default_factory=list, alias="requiredPasses")
+    ready_for_processing: bool = Field(default=False, alias="readyForProcessing")
+    processing_started: bool = Field(default=False, alias="processingStarted")
+    web_design_url: str | None = Field(default=None, alias="webDesignUrl")
 
 
 class ScanSessionResponse(CamelModel):

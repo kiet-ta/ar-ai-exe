@@ -480,6 +480,8 @@ function scanStatusLabel(status: string): string {
     created: "Created",
     waiting_for_uploads: "Waiting for both shoe videos",
     uploaded: "Uploaded",
+    queued: "Queued for reconstruction",
+    toolchain_unavailable: "Reconstruction toolchain unavailable",
     extracting_frames: "Extracting frames",
     filtering_frames: "Filtering frames",
     preparing_reconstruction: "Preparing reconstruction",
