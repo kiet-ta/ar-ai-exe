@@ -25,6 +25,8 @@ RUN apt-get update \
         libglu1-mesa-dev \
         libglfw3-dev \
         libjpeg-dev \
+        libjxl-dev \
+        libnanoflann-dev \
         libopencv-dev \
         libpng-dev \
         libtiff-dev \
@@ -40,6 +42,11 @@ WORKDIR /opt/build
 
 RUN git clone --depth 1 --branch "${OPENMVS_REF}" https://github.com/cdcseacave/openMVS.git openMVS \
     && git clone --depth 1 https://github.com/cdcseacave/VCG.git vcglib \
+    && sed -i 's/cv::IMWRITE_JPEGXL_QUALITY/cv::IMWRITE_JPEG_QUALITY/g' openMVS/libs/Common/Types.inl \
+    && grep -RIl 'nanoflann::SearchParameters' openMVS | xargs sed -i 's/nanoflann::SearchParameters/nanoflann::SearchParams/g' \
+    && grep -RIl 'SearchParams searchParams(0, false)' openMVS | xargs sed -i 's/SearchParams searchParams(0, false)/SearchParams searchParams(0, 0, false)/g' \
+    && grep -RIl 'CGAL/AABB_traits_3.h' openMVS | xargs sed -i 's|CGAL/AABB_traits_3.h|CGAL/AABB_traits.h|g' \
+    && grep -RIl 'CGAL/AABB_triangle_primitive_3.h' openMVS | xargs sed -i 's|CGAL/AABB_triangle_primitive_3.h|CGAL/AABB_triangle_primitive.h|g' \
     && cmake -S openMVS -B openMVS-build -G Ninja \
         -DCMAKE_BUILD_TYPE=Release \
         -DCMAKE_INSTALL_PREFIX=/opt/openmvs \
@@ -54,6 +61,9 @@ RUN git clone --depth 1 --branch "${OPENMVS_REF}" https://github.com/cdcseacave/
         -DOpenMVS_ENABLE_TESTS=OFF \
     && cmake --build openMVS-build --parallel "$(nproc)" \
     && cmake --install openMVS-build \
+    && for binary in InterfaceCOLMAP DensifyPointCloud ReconstructMesh RefineMesh TextureMesh; do \
+        ln -s "/opt/openmvs/bin/OpenMVS/$binary" "/opt/openmvs/bin/$binary"; \
+    done \
     && test -x /opt/openmvs/bin/InterfaceCOLMAP \
     && test -x /opt/openmvs/bin/DensifyPointCloud \
     && test -x /opt/openmvs/bin/ReconstructMesh \
