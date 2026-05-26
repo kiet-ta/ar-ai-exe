@@ -112,7 +112,14 @@ export type StickerLayer = {
   imageUrl: string;
   position: [number, number, number];
   rotation: [number, number, number];
+  normal?: [number, number, number];
+  targetMeshName?: string | null;
   scale: number;
+  width?: number;
+  height?: number;
+  offset?: number;
+  projectionDepth?: number;
+  subdivisions?: number;
 };
 
 export type TextLayer = {

@@ -1,6 +1,7 @@
-import { Center, Grid, OrbitControls, useGLTF, Decal, useTexture } from "@react-three/drei";
-import { Canvas, ThreeEvent } from "@react-three/fiber";
-import { Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { Grid, OrbitControls, Text as DreiText, TransformControls, useGLTF, useTexture } from "@react-three/drei";
+import { Canvas } from "@react-three/fiber";
+import { Fragment, Suspense, useEffect, useMemo, useRef, useState } from "react";
+import type { RefObject } from "react";
 import * as THREE from "three";
 
 import type { DesignConfig, StickerLayer, TextLayer } from "../../types";
@@ -16,6 +17,17 @@ type ModelViewerProps = {
   gizmoMode: "translate" | "rotate" | "scale";
 };
 
+type ModelRaycastTarget = {
+  name: string;
+  mesh: THREE.Mesh;
+};
+
+type LayerTransform = {
+  position: [number, number, number];
+  rotation: [number, number, number];
+  scale: number;
+};
+
 export function ModelViewer({ modelUrl, config, activeLayerId, gizmoMode, onConfigChange, onActiveLayerChange, onMeshBoundsUpdate }: ModelViewerProps) {
   return (
     <div className="viewer-surface">
@@ -26,17 +38,15 @@ export function ModelViewer({ modelUrl, config, activeLayerId, gizmoMode, onConf
           <directionalLight position={[3, 4, 5]} intensity={1.3} castShadow />
           <ErrorBoundary fallbackMessage="Failed to load 3D model. The file might be invalid or corrupted.">
             <Suspense fallback={null}>
-              <Center>
-                <ShoeModel
-                  url={modelUrl}
-                  config={config}
-                  activeLayerId={activeLayerId}
-                  gizmoMode={gizmoMode}
-                  onConfigChange={onConfigChange}
-                  onActiveLayerChange={onActiveLayerChange}
-                  onMeshBoundsUpdate={onMeshBoundsUpdate}
-                />
-              </Center>
+              <ShoeModel
+                url={modelUrl}
+                config={config}
+                activeLayerId={activeLayerId}
+                gizmoMode={gizmoMode}
+                onConfigChange={onConfigChange}
+                onActiveLayerChange={onActiveLayerChange}
+                onMeshBoundsUpdate={onMeshBoundsUpdate}
+              />
             </Suspense>
           </ErrorBoundary>
           <Grid
@@ -71,28 +81,34 @@ type ShoeModelProps = {
 
 function ShoeModel({ url, config, activeLayerId, gizmoMode, onConfigChange, onActiveLayerChange, onMeshBoundsUpdate }: ShoeModelProps) {
   const gltf = useGLTF(url);
-  const groupRef = useRef<THREE.Group>(null);
-  const meshRef = useRef<THREE.Mesh | null>(null);
-  const [, setForceRender] = useState({});
+  const stageRef = useRef<THREE.Group>(null);
 
-  const scale = useMemo(() => {
-    if (!gltf.scene) return 1;
-    const box = new THREE.Box3().setFromObject(gltf.scene);
-    const size = box.getSize(new THREE.Vector3());
+  const modelMetrics = useMemo(() => {
+    const bounds = computeSceneLocalBounds(gltf.scene);
+    const center = bounds.getCenter(new THREE.Vector3());
+    const size = bounds.getSize(new THREE.Vector3());
     const maxDim = Math.max(size.x, size.y, size.z);
-    return maxDim > 0 ? 2.5 / maxDim : 1;
+    const previewScale = maxDim > 0 ? 2.5 / maxDim : 1;
+    return { center, size, previewScale };
   }, [gltf.scene]);
 
+  const centeredModelPosition = useMemo(
+    () => modelMetrics.center.clone().multiplyScalar(-1),
+    [modelMetrics],
+  );
+
+  const raycastTargets = useMemo(() => createModelRaycastTargets(gltf.scene), [gltf.scene]);
+
   useEffect(() => {
-    let maxVerts = 0;
-    let bestMesh: THREE.Mesh | null = null;
+    onMeshBoundsUpdate({
+      center: vectorToTuple(modelMetrics.center),
+      size: vectorToTuple(modelMetrics.size),
+    });
+  }, [modelMetrics, onMeshBoundsUpdate]);
+
+  useEffect(() => {
     gltf.scene.traverse((node) => {
       if (node instanceof THREE.Mesh) {
-        if (!bestMesh || node.geometry.attributes.position.count > maxVerts) {
-          maxVerts = node.geometry.attributes.position.count;
-          bestMesh = node;
-        }
-
         if (!node.userData.originalMaterial) {
           if (Array.isArray(node.material)) {
             node.userData.originalMaterial = node.material.map((m: THREE.Material) => m.clone());
@@ -123,102 +139,13 @@ function ShoeModel({ url, config, activeLayerId, gizmoMode, onConfigChange, onAc
         node.receiveShadow = true;
       }
     });
-
-    if (bestMesh && bestMesh !== meshRef.current) {
-      meshRef.current = bestMesh;
-      setForceRender({});
-      const mesh = bestMesh as THREE.Mesh;
-      mesh.geometry.computeBoundingBox();
-      const box = mesh.geometry.boundingBox;
-      if (box) {
-        const center = new THREE.Vector3();
-        const size = new THREE.Vector3();
-        box.getCenter(center);
-        box.getSize(size);
-        onMeshBoundsUpdate({
-          center: [center.x, center.y, center.z],
-          size: [size.x, size.y, size.z]
-        });
-      }
-    }
-  }, [config?.baseColor, config?.material.metallic, config?.material.roughness, gltf.scene, onMeshBoundsUpdate]);
-
-  const [isDragging, setIsDragging] = useState(false);
-  const [isTransforming, setIsTransforming] = useState(false);
-
-  const updateActiveLayer = (point: THREE.Vector3, normal: THREE.Vector3) => {
-    if (!config || !groupRef.current || !activeLayerId) return;
-
-    // Convert world point to group local space
-    const localPoint = groupRef.current.worldToLocal(point.clone());
-    
-    // Convert normal to group local space
-    const normalMatrix = new THREE.Matrix3().getNormalMatrix(groupRef.current.matrixWorld);
-    const localNormal = normal.clone().applyMatrix3(normalMatrix.invert()).normalize();
-    
-    // Offset slightly above surface to prevent z-fighting
-    localPoint.add(localNormal.clone().multiplyScalar(0.01));
-
-    const activeSticker = config.stickers.find((s) => s.id === activeLayerId);
-    const activeText = config.texts.find((t) => t.id === activeLayerId);
-    const activeLayer = activeSticker || activeText;
-    if (!activeLayer) return;
-
-    // Compute rotation: make plane face outward from surface
-    const quaternion = new THREE.Quaternion().setFromUnitVectors(
-      new THREE.Vector3(0, 0, 1), localNormal
-    );
-    const euler = new THREE.Euler().setFromQuaternion(quaternion);
-
-    const currentZRot = activeLayer.rotation[2] || 0;
-    const newPos: [number, number, number] = [localPoint.x, localPoint.y, localPoint.z];
-    const newRot: [number, number, number] = [euler.x, euler.y, currentZRot];
-
-    if (activeSticker) {
-      onConfigChange({
-        ...config,
-        stickers: config.stickers.map((s) =>
-          s.id === activeLayerId ? { ...s, position: newPos, rotation: newRot } : s
-        ),
-      });
-    } else if (activeText) {
-      onConfigChange({
-        ...config,
-        texts: config.texts.map((t) =>
-          t.id === activeLayerId ? { ...t, position: newPos, rotation: newRot } : t
-        ),
-      });
-    }
-  };
-
-  const handlePointerDown = (e: ThreeEvent<PointerEvent>) => {
-    if (isTransforming) return;
-    if (activeLayerId && e.face?.normal) {
-      e.stopPropagation();
-      setIsDragging(true);
-      updateActiveLayer(e.point, e.face.normal);
-    }
-  };
-
-  const handlePointerMove = (e: ThreeEvent<PointerEvent>) => {
-    if (isTransforming) return;
-    if (isDragging && activeLayerId && e.face?.normal) {
-      e.stopPropagation();
-      updateActiveLayer(e.point, e.face.normal);
-    }
-  };
-
-  const handlePointerUp = () => {
-    setIsDragging(false);
-  };
+  }, [config?.baseColor, config?.material.metallic, config?.material.roughness, gltf.scene]);
 
   const handlePointerMissed = () => {
-    if (isDragging) setIsDragging(false);
-    else onActiveLayerChange(null);
+    onActiveLayerChange(null);
   };
 
   const handleTransformEnd = (id: string, isText: boolean, pos: [number, number, number], rot: [number, number, number], scale: number) => {
-    setIsTransforming(false);
     if (!config) return;
     
     if (isText) {
@@ -229,29 +156,41 @@ function ShoeModel({ url, config, activeLayerId, gizmoMode, onConfigChange, onAc
     } else {
       onConfigChange({
         ...config,
-        stickers: config.stickers.map((s) => s.id === id ? { ...s, position: pos, rotation: rot, scale } : s)
+        stickers: config.stickers.map((s) =>
+          s.id === id
+            ? {
+                ...s,
+                position: pos,
+                rotation: rot,
+                scale,
+                width: scale,
+                height: scale,
+                projectionDepth: Math.max(s.projectionDepth ?? 0, scale * 3, 0.05),
+              }
+            : s
+        )
       });
     }
   };
 
   return (
     <group
-      ref={groupRef}
-      scale={scale}
-      onPointerDown={handlePointerDown}
-      onPointerMove={handlePointerMove}
-      onPointerUp={handlePointerUp}
+      ref={stageRef}
+      scale={modelMetrics.previewScale}
       onPointerMissed={handlePointerMissed}
     >
-      <primitive object={gltf.scene} />
+      <group position={centeredModelPosition}>
+        <primitive object={gltf.scene} />
+      </group>
       
       {config?.stickers.map((sticker) => (
         <StickerPlane 
           key={sticker.id} 
           sticker={sticker} 
+          modelCenter={modelMetrics.center}
+          raycastTargets={raycastTargets}
           isActive={sticker.id === activeLayerId}
           gizmoMode={gizmoMode}
-          onTransformStart={() => setIsTransforming(true)}
           onTransformEnd={(pos, rot, s) => handleTransformEnd(sticker.id, false, pos, rot, s)}
         />
       ))}
@@ -259,9 +198,9 @@ function ShoeModel({ url, config, activeLayerId, gizmoMode, onConfigChange, onAc
         <TextPlane 
           key={textLayer.id} 
           layer={textLayer} 
+          modelCenter={modelMetrics.center}
           isActive={textLayer.id === activeLayerId}
           gizmoMode={gizmoMode}
-          onTransformStart={() => setIsTransforming(true)}
           onTransformEnd={(pos, rot, s) => handleTransformEnd(textLayer.id, true, pos, rot, s)}
         />
       ))}
@@ -269,32 +208,133 @@ function ShoeModel({ url, config, activeLayerId, gizmoMode, onConfigChange, onAc
   );
 }
 
-import { TransformControls, Text as DreiText } from "@react-three/drei";
+function computeSceneLocalBounds(scene: THREE.Object3D): THREE.Box3 {
+  scene.updateWorldMatrix(true, true);
+  const sceneWorldInverse = scene.matrixWorld.clone().invert();
+  const bounds = new THREE.Box3();
+  const meshBounds = new THREE.Box3();
+
+  scene.traverse((node) => {
+    if (!(node instanceof THREE.Mesh) || !node.geometry.attributes.position) return;
+    if (!node.geometry.boundingBox) {
+      node.geometry.computeBoundingBox();
+    }
+    if (!node.geometry.boundingBox) return;
+
+    node.updateWorldMatrix(true, false);
+    meshBounds.copy(node.geometry.boundingBox);
+    meshBounds.applyMatrix4(sceneWorldInverse.clone().multiply(node.matrixWorld));
+    bounds.union(meshBounds);
+  });
+
+  if (bounds.isEmpty()) {
+    bounds.setFromCenterAndSize(new THREE.Vector3(), new THREE.Vector3(1, 1, 1));
+  }
+  return bounds;
+}
+
+function createModelRaycastTargets(root: THREE.Object3D): ModelRaycastTarget[] {
+  const targets: ModelRaycastTarget[] = [];
+
+  root.traverse((node) => {
+    if (!(node instanceof THREE.Mesh) || !node.geometry.attributes.position) return;
+
+    const mesh = new THREE.Mesh(node.geometry);
+    mesh.name = node.name || node.geometry.name || "model_mesh";
+    mesh.matrixAutoUpdate = false;
+    const relativeMatrix = getMatrixRelativeToRoot(node, root);
+    mesh.matrix.copy(relativeMatrix);
+    mesh.matrixWorld.copy(relativeMatrix);
+    targets.push({
+      name: mesh.name,
+      mesh,
+    });
+  });
+
+  return targets;
+}
+
+function getMatrixRelativeToRoot(object: THREE.Object3D, root: THREE.Object3D): THREE.Matrix4 {
+  const chain: THREE.Object3D[] = [];
+  let current: THREE.Object3D | null = object;
+
+  while (current && current !== root) {
+    chain.unshift(current);
+    current = current.parent;
+  }
+
+  const matrix = new THREE.Matrix4();
+  for (const item of chain) {
+    item.updateMatrix();
+    matrix.multiply(item.matrix);
+  }
+
+  return matrix;
+}
+
+function vectorToTuple(vector: THREE.Vector3): [number, number, number] {
+  return [vector.x, vector.y, vector.z];
+}
 
 function StickerPlane({ 
   sticker, 
+  modelCenter,
+  raycastTargets,
   isActive, 
   gizmoMode, 
-  onTransformStart, 
   onTransformEnd 
 }: { 
   sticker: StickerLayer; 
+  modelCenter: THREE.Vector3;
+  raycastTargets: ModelRaycastTarget[];
   isActive: boolean; 
   gizmoMode: "translate" | "rotate" | "scale";
-  onTransformStart: () => void;
   onTransformEnd: (pos: [number, number, number], rot: [number, number, number], scale: number) => void;
 }) {
   const texture = useTexture(sticker.imageUrl);
   texture.colorSpace = THREE.SRGBColorSpace;
-  const ref = useRef<THREE.Mesh>(null);
-  
-  const position = new THREE.Vector3(...sticker.position);
-  const rotation = new THREE.Euler(...sticker.rotation);
-  const scaleVec = new THREE.Vector3(sticker.scale, sticker.scale, sticker.scale);
-  
-  const mesh = (
-    <mesh ref={ref} position={position} rotation={rotation} scale={scaleVec}>
-      <planeGeometry args={[1, 1]} />
+  const anchorRef = useRef<THREE.Mesh>(null);
+  const [draftTransform, setDraftTransform] = useState<LayerTransform | null>(null);
+
+  useEffect(() => {
+    setDraftTransform(null);
+  }, [sticker.id, sticker.position, sticker.rotation, sticker.scale]);
+
+  const transform = useMemo<LayerTransform>(() => {
+    if (draftTransform) {
+      return draftTransform;
+    }
+    const stagePosition = new THREE.Vector3(...sticker.position).sub(modelCenter);
+    return {
+      position: vectorToTuple(stagePosition),
+      rotation: sticker.rotation,
+      scale: sticker.scale,
+    };
+  }, [draftTransform, modelCenter, sticker.position, sticker.rotation, sticker.scale]);
+
+  const projectedGeometry = useMemo(
+    () => createProjectedStickerGeometry(sticker, transform, modelCenter, raycastTargets),
+    [modelCenter, raycastTargets, sticker, transform],
+  );
+
+  const position = new THREE.Vector3(...transform.position);
+  const rotation = new THREE.Euler(...transform.rotation);
+  const scaleVec = new THREE.Vector3(transform.scale, transform.scale, transform.scale);
+
+  const syncDraftFromAnchor = () => {
+    if (!anchorRef.current) return;
+    const p = anchorRef.current.position;
+    const r = anchorRef.current.rotation;
+    const s = anchorRef.current.scale;
+    setDraftTransform({
+      position: [p.x, p.y, p.z],
+      rotation: [r.x, r.y, r.z],
+      scale: Math.max(s.x, s.y, s.z),
+    });
+  };
+
+  const projectedMesh = (
+    <mesh geometry={projectedGeometry} name={`layer_preview_${sticker.id}`}>
       <meshStandardMaterial
         map={texture}
         transparent
@@ -308,47 +348,169 @@ function StickerPlane({
 
   if (isActive) {
     return (
-      <TransformControls 
-        mode={gizmoMode}
-        onMouseDown={() => onTransformStart()}
-        onMouseUp={() => {
-          if (ref.current) {
-            const p = ref.current.position;
-            const r = ref.current.rotation;
-            const s = ref.current.scale;
-            onTransformEnd([p.x, p.y, p.z], [r.x, r.y, r.z], Math.max(s.x, s.y, s.z));
-          }
-        }}
-      >
-        {mesh}
-      </TransformControls>
+      <Fragment>
+        {projectedMesh}
+        <mesh
+          ref={anchorRef}
+          name={`layer_anchor_${sticker.id}`}
+          position={position}
+          rotation={rotation}
+          scale={scaleVec}
+          raycast={() => null}
+        >
+          <planeGeometry args={[1, 1]} />
+          <meshBasicMaterial transparent opacity={0} colorWrite={false} depthWrite={false} />
+        </mesh>
+        <TransformControls
+          object={anchorRef as RefObject<THREE.Object3D>}
+          mode={gizmoMode}
+          onObjectChange={syncDraftFromAnchor}
+          onMouseUp={() => {
+            if (anchorRef.current) {
+              const p = anchorRef.current.position;
+              const r = anchorRef.current.rotation;
+              const s = anchorRef.current.scale;
+              const savedPosition = p.clone().add(modelCenter);
+              onTransformEnd(vectorToTuple(savedPosition), [r.x, r.y, r.z], Math.max(s.x, s.y, s.z));
+            }
+          }}
+        />
+      </Fragment>
     );
   }
 
-  return mesh;
+  return projectedMesh;
+}
+
+function createProjectedStickerGeometry(
+  sticker: StickerLayer,
+  transform: LayerTransform,
+  modelCenter: THREE.Vector3,
+  raycastTargets: ModelRaycastTarget[],
+): THREE.BufferGeometry {
+  const cuts = clampInt(sticker.subdivisions ?? 32, 4, 128);
+  const width = sticker.width ?? sticker.scale;
+  const height = sticker.height ?? sticker.scale;
+  const projectionDepth = Math.max(sticker.projectionDepth ?? 0, width * 2, height * 2, 0.05);
+  const offset = sticker.offset ?? 0.004;
+  const position = new THREE.Vector3(...transform.position);
+  const quaternion = new THREE.Quaternion().setFromEuler(new THREE.Euler(...transform.rotation));
+  const normal = new THREE.Vector3(0, 0, 1).applyQuaternion(quaternion).normalize();
+  const planeToStage = new THREE.Matrix4().compose(position, quaternion, new THREE.Vector3(1, 1, 1));
+  const positions: number[] = [];
+  const uvs: number[] = [];
+  const indices: number[] = [];
+
+  for (let row = 0; row <= cuts; row += 1) {
+    const v = row / cuts;
+    for (let col = 0; col <= cuts; col += 1) {
+      const u = col / cuts;
+      const localPoint = new THREE.Vector3((u - 0.5) * width, (v - 0.5) * height, 0);
+      const stagePoint = localPoint.applyMatrix4(planeToStage);
+      const projectedPoint = projectPointToModel(stagePoint, normal, projectionDepth, offset, modelCenter, raycastTargets);
+      positions.push(projectedPoint.x, projectedPoint.y, projectedPoint.z);
+      uvs.push(u, v);
+    }
+  }
+
+  const rowWidth = cuts + 1;
+  for (let row = 0; row < cuts; row += 1) {
+    for (let col = 0; col < cuts; col += 1) {
+      const a = row * rowWidth + col;
+      const b = a + 1;
+      const c = a + rowWidth;
+      const d = c + 1;
+      indices.push(a, b, d, a, d, c);
+    }
+  }
+
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+  geometry.setAttribute("uv", new THREE.Float32BufferAttribute(uvs, 2));
+  geometry.setIndex(indices);
+  geometry.computeVertexNormals();
+  return geometry;
+}
+
+function projectPointToModel(
+  stagePoint: THREE.Vector3,
+  normal: THREE.Vector3,
+  projectionDepth: number,
+  offset: number,
+  modelCenter: THREE.Vector3,
+  raycastTargets: ModelRaycastTarget[],
+): THREE.Vector3 {
+  if (raycastTargets.length === 0) {
+    return stagePoint;
+  }
+
+  const scenePoint = stagePoint.clone().add(modelCenter);
+  const raycaster = new THREE.Raycaster();
+  raycaster.near = 0;
+  raycaster.far = projectionDepth * 2;
+  const candidates: THREE.Intersection[] = [];
+
+  raycaster.set(scenePoint.clone().addScaledVector(normal, projectionDepth), normal.clone().multiplyScalar(-1));
+  candidates.push(...raycaster.intersectObjects(raycastTargets.map((target) => target.mesh), false));
+
+  raycaster.set(scenePoint.clone().addScaledVector(normal, -projectionDepth), normal);
+  candidates.push(...raycaster.intersectObjects(raycastTargets.map((target) => target.mesh), false));
+
+  if (candidates.length === 0) {
+    return stagePoint;
+  }
+
+  let closest = candidates[0];
+  let closestDistance = closest.point.distanceToSquared(scenePoint);
+  for (const candidate of candidates.slice(1)) {
+    const distance = candidate.point.distanceToSquared(scenePoint);
+    if (distance < closestDistance) {
+      closest = candidate;
+      closestDistance = distance;
+    }
+  }
+
+  const surfaceNormal = intersectionNormal(closest, normal.clone().multiplyScalar(-1));
+  return closest.point.clone().sub(modelCenter).addScaledVector(surfaceNormal, offset);
+}
+
+function intersectionNormal(intersection: THREE.Intersection, fallback: THREE.Vector3): THREE.Vector3 {
+  if (!intersection.face) {
+    return fallback.normalize();
+  }
+
+  return intersection.face.normal
+    .clone()
+    .applyNormalMatrix(new THREE.Matrix3().getNormalMatrix(intersection.object.matrixWorld))
+    .normalize();
+}
+
+function clampInt(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, Math.round(value)));
 }
 
 function TextPlane({ 
   layer, 
+  modelCenter,
   isActive, 
   gizmoMode, 
-  onTransformStart, 
   onTransformEnd 
 }: { 
   layer: TextLayer; 
+  modelCenter: THREE.Vector3;
   isActive: boolean; 
   gizmoMode: "translate" | "rotate" | "scale";
-  onTransformStart: () => void;
   onTransformEnd: (pos: [number, number, number], rot: [number, number, number], scale: number) => void;
 }) {
   const ref = useRef<THREE.Mesh>(null);
-  const position = new THREE.Vector3(...layer.position);
+  const position = new THREE.Vector3(...layer.position).sub(modelCenter);
   const rotation = new THREE.Euler(...layer.rotation);
   const scaleVec = new THREE.Vector3(layer.scale, layer.scale, layer.scale);
   
   const mesh = (
     <DreiText 
       ref={ref}
+      name={`layer_preview_${layer.id}`}
       position={position} 
       rotation={rotation}
       scale={scaleVec}
@@ -363,20 +525,22 @@ function TextPlane({
 
   if (isActive) {
     return (
-      <TransformControls 
+      <Fragment>
+        {mesh}
+        <TransformControls
+        object={ref as RefObject<THREE.Object3D>}
         mode={gizmoMode}
-        onMouseDown={() => onTransformStart()}
         onMouseUp={() => {
           if (ref.current) {
             const p = ref.current.position;
             const r = ref.current.rotation;
             const s = ref.current.scale;
-            onTransformEnd([p.x, p.y, p.z], [r.x, r.y, r.z], Math.max(s.x, s.y, s.z));
+            const savedPosition = p.clone().add(modelCenter);
+            onTransformEnd(vectorToTuple(savedPosition), [r.x, r.y, r.z], Math.max(s.x, s.y, s.z));
           }
         }}
-      >
-        {mesh}
-      </TransformControls>
+        />
+      </Fragment>
     );
   }
 

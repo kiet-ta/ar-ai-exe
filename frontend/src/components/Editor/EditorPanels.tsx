@@ -260,7 +260,20 @@ export function EditorPanels({
               max="2"
               step="0.05"
               value={activeLayer.scale}
-              onChange={(e) => updateLayer(activeLayer.id, { scale: Number(e.target.value) })}
+              onChange={(e) => {
+                const scale = Number(e.target.value);
+                updateLayer(
+                  activeLayer.id,
+                  activeSticker
+                    ? {
+                        scale,
+                        width: scale,
+                        height: scale,
+                        projectionDepth: Math.max(activeSticker.projectionDepth ?? 0, scale * 3, 0.05),
+                      }
+                    : { scale },
+                );
+              }}
             />
           </label>
           <label>
@@ -344,7 +357,8 @@ function addSticker(config: DesignConfig, preset: StickerPreset, meshBounds: { c
   const index = config.stickers.length + 1;
   const c = meshBounds ? meshBounds.center : [0, 0, 0];
   const s = meshBounds ? meshBounds.size : [1, 1, 1];
-  const stickerScale = Math.max(s[0], s[1], s[2]) * 0.15;
+  const maxModelSize = Math.max(s[0], s[1], s[2]);
+  const stickerScale = maxModelSize * 0.15;
 
   return {
     ...config,
@@ -356,7 +370,14 @@ function addSticker(config: DesignConfig, preset: StickerPreset, meshBounds: { c
         imageUrl: preset.imageUrl,
         position: [c[0] + s[0] * 0.4, c[1], c[2]],
         rotation: [0, 1.57, 0],
+        normal: [1, 0, 0],
+        targetMeshName: null,
         scale: stickerScale,
+        width: stickerScale,
+        height: stickerScale,
+        offset: 0.004,
+        projectionDepth: Math.max(maxModelSize * 1.25, stickerScale * 2, 0.05),
+        subdivisions: 32,
       },
     ],
   };
