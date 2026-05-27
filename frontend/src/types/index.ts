@@ -129,7 +129,14 @@ export type TextLayer = {
   color: string;
   position: [number, number, number];
   rotation: [number, number, number];
+  normal?: [number, number, number];
   scale: number;
+  width?: number;
+  height?: number;
+  offset?: number;
+  projectionDepth?: number;
+  subdivisions?: number;
+  targetMeshName?: string | null;
 };
 
 export type DesignConfig = {
@@ -147,6 +154,9 @@ export type Design = {
   name: string;
   status: string;
   designConfig: DesignConfig;
+  previewGlbUrl: string | null;
+  previewStatus: "none" | "ready" | "failed";
+  previewErrorMessage: string | null;
   createdAt: string;
   updatedAt: string;
 };

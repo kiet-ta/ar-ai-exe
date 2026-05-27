@@ -39,6 +39,12 @@ class DesignStatus:
     EXPORTED = "exported"
 
 
+class DesignPreviewStatus:
+    NONE = "none"
+    READY = "ready"
+    FAILED = "failed"
+
+
 class ExportStatus:
     COMPLETED = "completed"
     FAILED = "failed"
@@ -148,6 +154,13 @@ class Design(Base):
     name: Mapped[str] = mapped_column(String(160))
     design_config_path: Mapped[str] = mapped_column(Text)
     status: Mapped[str] = mapped_column(String(32), default=DesignStatus.DRAFT, index=True)
+    preview_glb_path: Mapped[str | None] = mapped_column(Text, nullable=True)
+    preview_glb_size_bytes: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    preview_glb_content_type: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    preview_glb_checksum: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    preview_status: Mapped[str] = mapped_column(String(32), default=DesignPreviewStatus.NONE, index=True)
+    preview_error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    preview_updated_at: Mapped[datetime | None] = mapped_column(nullable=True)
     created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(default=datetime.utcnow, onupdate=datetime.utcnow)
 

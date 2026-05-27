@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import Field
 
@@ -37,5 +37,8 @@ class DesignResponse(CamelModel):
     name: str
     status: str
     design_config: dict[str, Any] = Field(alias="designConfig")
+    preview_glb_url: str | None = Field(default=None, alias="previewGlbUrl")
+    preview_status: Literal["none", "ready", "failed"] = Field(default="none", alias="previewStatus")
+    preview_error_message: str | None = Field(default=None, alias="previewErrorMessage")
     created_at: datetime = Field(alias="createdAt")
     updated_at: datetime = Field(alias="updatedAt")

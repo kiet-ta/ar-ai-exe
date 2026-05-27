@@ -24,7 +24,11 @@ export function App() {
   const [scanSession, setScanSession] = useState<ScanSession | null>(null);
   const [modelAsset, setModelAsset] = useState<ModelAsset | null>(null);
   const [modelUrl, setModelUrl] = useState<string | null>(null);
+  const [previewModelUrl, setPreviewModelUrl] = useState<string | null>(null);
+  const [bakedLayerIds, setBakedLayerIds] = useState<string[]>([]);
+  const [savedConfigFingerprint, setSavedConfigFingerprint] = useState<string | null>(null);
   const [design, setDesign] = useState<Design | null>(null);
+  const [previewErrorMessage, setPreviewErrorMessage] = useState<string | null>(null);
   const [designName, setDesignName] = useState("Untitled shoe design");
   const [config, setConfig] = useState<DesignConfig | null>(null);
   const [exportPackage, setExportPackage] = useState<ExportPackage | null>(null);
@@ -40,6 +44,7 @@ export function App() {
   const [activeLayerId, setActiveLayerId] = useState<string | null>(null);
   const [meshBounds, setMeshBounds] = useState<{ center: [number, number, number]; size: [number, number, number] } | null>(null);
   const [gizmoMode, setGizmoMode] = useState<"translate" | "rotate" | "scale">("translate");
+  const [surfaceApplyRequest, setSurfaceApplyRequest] = useState(0);
 
   useEffect(() => {
     void loadReadiness();
@@ -81,7 +86,17 @@ export function App() {
     };
   }, [modelUrl]);
 
+  useEffect(() => {
+    return () => {
+      if (previewModelUrl) {
+        URL.revokeObjectURL(previewModelUrl);
+      }
+    };
+  }, [previewModelUrl]);
+
   const canLoad = useMemo(() => scanId.trim().length > 0 && Boolean(user), [scanId, user]);
+  const activeModelUrl = previewModelUrl ?? modelUrl;
+  const hiddenLayerIds = previewModelUrl ? bakedLayerIds : [];
 
   async function submitAuth(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -123,12 +138,24 @@ export function App() {
     }
   }
 
+  function clearBakedPreview() {
+    setPreviewModelUrl(null);
+    setBakedLayerIds([]);
+  }
+
+  function clearSavedDesignState() {
+    setSavedConfigFingerprint(null);
+    setPreviewErrorMessage(null);
+    clearBakedPreview();
+  }
+
   function logout() {
     api.logout();
     setUser(null);
     setScanSession(null);
     setModelAsset(null);
     setModelUrl(null);
+    clearSavedDesignState();
     setDesign(null);
     setConfig(null);
     setExportPackage(null);
@@ -145,6 +172,7 @@ export function App() {
     setStatusMessage("Loading scan");
     setModelAsset(null);
     setModelUrl(null);
+    clearSavedDesignState();
     setExportPackage(null);
 
     try {
@@ -161,8 +189,8 @@ export function App() {
       const loadedModel = await api.getModelAsset(loadedScan.modelAssetId);
       setModelAsset(loadedModel);
       setModelUrl(await api.fetchModelBlobUrl(loadedModel));
-      await loadSavedDesign(loadedModel.id);
-      setStatusMessage("Model loaded");
+      const loadedPreview = await loadSavedDesign(loadedModel.id);
+      setStatusMessage(loadedPreview ? "Model loaded with saved preview" : "Model loaded");
     } catch (error) {
       setStatusMessage(messageFromError(error));
     }
@@ -173,6 +201,7 @@ export function App() {
     setStatusMessage("Importing model");
     setModelAsset(null);
     setModelUrl(null);
+    clearSavedDesignState();
     setDesign(null);
     setConfig(null);
     setExportPackage(null);
@@ -186,8 +215,8 @@ export function App() {
       setModelAsset(imported.modelAsset);
       setScanIdInUrl(imported.scanSession.id);
       setModelUrl(await api.fetchModelBlobUrl(imported.modelAsset));
-      await loadSavedDesign(imported.modelAsset.id);
-      setStatusMessage("Imported model loaded");
+      const loadedPreview = await loadSavedDesign(imported.modelAsset.id);
+      setStatusMessage(loadedPreview ? "Imported model loaded with saved preview" : "Imported model loaded");
     } catch (error) {
       setStatusMessage(messageFromError(error));
     } finally {
@@ -195,14 +224,15 @@ export function App() {
     }
   }
 
-  async function loadSavedDesign(modelAssetId: string) {
+  async function loadSavedDesign(modelAssetId: string): Promise<boolean> {
     const savedDesignId = localStorage.getItem(designStorageKey(modelAssetId));
     if (!savedDesignId) {
       const defaultConfig = createDefaultConfig(modelAssetId);
       setConfig(defaultConfig);
       setDesign(null);
       setDesignName("Untitled shoe design");
-      return;
+      clearSavedDesignState();
+      return false;
     }
 
     try {
@@ -210,9 +240,37 @@ export function App() {
       setDesign(savedDesign);
       setDesignName(savedDesign.name);
       setConfig(savedDesign.designConfig);
+      setSavedConfigFingerprint(configFingerprint(savedDesign.designConfig));
+      setPreviewErrorMessage(savedDesign.previewStatus === "failed" ? savedDesign.previewErrorMessage : null);
+      return await loadBakedPreview(savedDesign);
     } catch {
       localStorage.removeItem(designStorageKey(modelAssetId));
+      setDesign(null);
       setConfig(createDefaultConfig(modelAssetId));
+      clearSavedDesignState();
+      return false;
+    }
+  }
+
+  async function loadBakedPreview(savedDesign: Design): Promise<boolean> {
+    if (!savedDesign.previewGlbUrl || savedDesign.previewStatus !== "ready") {
+      clearBakedPreview();
+      return false;
+    }
+
+    try {
+      const previewUrl = await api.fetchDesignPreviewBlobUrl(savedDesign);
+      if (!previewUrl) {
+        clearBakedPreview();
+        return false;
+      }
+      setPreviewModelUrl(previewUrl);
+      setBakedLayerIds(layerIds(savedDesign.designConfig));
+      return true;
+    } catch (error) {
+      clearBakedPreview();
+      setStatusMessage(`Preview load failed: ${messageFromError(error)}`);
+      return false;
     }
   }
 
@@ -222,16 +280,25 @@ export function App() {
     }
 
     setIsSaving(true);
-    setStatusMessage("Saving design");
+    setStatusMessage("Đang áp sticker/text vào giày...");
     try {
+      const bakeConfig = await prepareBakeConfig(config);
       const savedDesign = design
-        ? await api.updateDesign(design.id, designName, config)
-        : await api.createDesign(modelAsset.id, designName, config);
+        ? await api.updateDesign(design.id, designName, bakeConfig)
+        : await api.createDesign(modelAsset.id, designName, bakeConfig);
       setDesign(savedDesign);
       setDesignName(savedDesign.name);
       setConfig(savedDesign.designConfig);
+      setSavedConfigFingerprint(configFingerprint(savedDesign.designConfig));
       localStorage.setItem(designStorageKey(modelAsset.id), savedDesign.id);
-      setStatusMessage("Design saved");
+      const hasPreview = await loadBakedPreview(savedDesign);
+      if (savedDesign.previewStatus === "failed") {
+        setPreviewErrorMessage(savedDesign.previewErrorMessage ?? "Move the sticker/text closer to the shoe and save again.");
+        setStatusMessage(savedDesign.previewErrorMessage ?? "Draft saved, but preview bake failed.");
+      } else {
+        setPreviewErrorMessage(null);
+        setStatusMessage(hasPreview ? "Draft saved and applied to shoe" : "Design saved");
+      }
       return savedDesign;
     } catch (error) {
       setStatusMessage(messageFromError(error));
@@ -241,8 +308,21 @@ export function App() {
     }
   }
 
+  function handleConfigChange(nextConfig: DesignConfig) {
+    if (previewModelUrl && config && !canKeepBakedPreview(config, nextConfig, bakedLayerIds)) {
+      clearBakedPreview();
+    }
+    setPreviewErrorMessage(null);
+    setConfig(nextConfig);
+  }
+
+  function applyActiveLayerToSurface() {
+    setSurfaceApplyRequest((value) => value + 1);
+  }
+
   async function exportDesign() {
-    const savedDesign = design ?? (await saveDesign());
+    const hasUnsavedConfig = config ? configFingerprint(config) !== savedConfigFingerprint : false;
+    const savedDesign = !design || hasUnsavedConfig ? await saveDesign() : design;
     const activeDesignId = savedDesign?.id ?? (modelAsset && localStorage.getItem(designStorageKey(modelAsset.id)));
     if (!activeDesignId) {
       setStatusMessage("Save the draft before exporting.");
@@ -331,13 +411,18 @@ export function App() {
             <section className="main-grid">
               <MetadataPanel scanSession={scanSession} modelAsset={modelAsset} />
               <ModelViewer
-                modelUrl={modelUrl}
+                modelUrl={activeModelUrl}
                 config={config}
                 activeLayerId={activeLayerId}
                 gizmoMode={gizmoMode}
-                onConfigChange={setConfig}
+                hiddenLayerIds={hiddenLayerIds}
+                isSaving={isSaving}
+                previewErrorMessage={previewErrorMessage}
+                surfaceApplyRequest={surfaceApplyRequest}
+                onConfigChange={handleConfigChange}
                 onActiveLayerChange={setActiveLayerId}
                 onMeshBoundsUpdate={setMeshBounds}
+                onSurfaceApplyResult={setStatusMessage}
               />
               <EditorPanels
                 config={config}
@@ -349,8 +434,9 @@ export function App() {
                 meshBounds={meshBounds}
                 gizmoMode={gizmoMode}
                 onNameChange={setDesignName}
-                onConfigChange={setConfig}
+                onConfigChange={handleConfigChange}
                 onActiveLayerChange={setActiveLayerId}
+                onApplyActiveLayerToSurface={applyActiveLayerToSurface}
                 onGizmoModeChange={setGizmoMode}
                 onSave={saveDesign}
                 onExport={exportDesign}
@@ -509,6 +595,91 @@ function AuthPanel({
       </form>
     </section>
   );
+}
+
+async function prepareBakeConfig(config: DesignConfig): Promise<DesignConfig> {
+  const stickers = await Promise.all(
+    config.stickers.map(async (sticker) => ({
+      ...sticker,
+      imageUrl: await rasterizeSvgDataUriToPng(sticker.imageUrl),
+    })),
+  );
+  return { ...config, stickers };
+}
+
+async function rasterizeSvgDataUriToPng(imageUrl: string): Promise<string> {
+  if (!isSvgDataUri(imageUrl)) {
+    return imageUrl;
+  }
+
+  try {
+    const image = await loadImage(imageUrl);
+    const width = clampInt(image.naturalWidth || image.width || 512, 1, 1024);
+    const height = clampInt(image.naturalHeight || image.height || 512, 1, 1024);
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    const context = canvas.getContext("2d");
+    if (!context) {
+      return imageUrl;
+    }
+    context.clearRect(0, 0, width, height);
+    context.drawImage(image, 0, 0, width, height);
+    return canvas.toDataURL("image/png");
+  } catch {
+    return imageUrl;
+  }
+}
+
+function isSvgDataUri(imageUrl: string): boolean {
+  return /^data:image\/svg\+xml/i.test(imageUrl.trim());
+}
+
+function loadImage(src: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error("Sticker SVG could not be rasterized."));
+    image.src = src;
+  });
+}
+
+function clampInt(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, Math.round(value)));
+}
+
+function layerIds(config: DesignConfig): string[] {
+  return [...config.stickers.map((sticker) => sticker.id), ...config.texts.map((text) => text.id)];
+}
+
+function configFingerprint(config: DesignConfig): string {
+  return JSON.stringify(config);
+}
+
+function canKeepBakedPreview(
+  previousConfig: DesignConfig,
+  nextConfig: DesignConfig,
+  bakedLayerIds: string[],
+): boolean {
+  if (
+    previousConfig.baseColor !== nextConfig.baseColor ||
+    JSON.stringify(previousConfig.material) !== JSON.stringify(nextConfig.material)
+  ) {
+    return false;
+  }
+
+  for (const layerId of bakedLayerIds) {
+    const previousLayer = findLayer(previousConfig, layerId);
+    const nextLayer = findLayer(nextConfig, layerId);
+    if (!previousLayer || !nextLayer || JSON.stringify(previousLayer) !== JSON.stringify(nextLayer)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function findLayer(config: DesignConfig, layerId: string) {
+  return config.stickers.find((sticker) => sticker.id === layerId) ?? config.texts.find((text) => text.id === layerId);
 }
 
 function createDefaultConfig(modelAssetId: string): DesignConfig {
