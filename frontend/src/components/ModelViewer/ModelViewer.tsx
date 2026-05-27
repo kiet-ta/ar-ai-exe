@@ -7,6 +7,9 @@ import * as THREE from "three";
 import type { DesignConfig, StickerLayer, TextLayer } from "../../types";
 import { ErrorBoundary } from "../Layout/ErrorBoundary";
 
+const TRANSPARENT_PIXEL =
+  "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=";
+
 type ModelViewerProps = {
   modelUrl: string | null;
   config: DesignConfig | null;
@@ -525,7 +528,7 @@ function StickerPlane({
   gizmoMode: "translate" | "rotate" | "scale";
   onTransformEnd: (pos: [number, number, number], rot: [number, number, number], scale: number) => void;
 }) {
-  const texture = useTexture(sticker.imageUrl);
+  const texture = useTexture(stickerTextureUrl(sticker));
   const ref = useRef<THREE.Mesh>(null);
   texture.colorSpace = THREE.SRGBColorSpace;
 
@@ -570,6 +573,10 @@ function StickerPlane({
       ) : null}
     </Fragment>
   );
+}
+
+function stickerTextureUrl(sticker: StickerLayer): string {
+  return sticker.previewUrl ?? sticker.imageUrl ?? TRANSPARENT_PIXEL;
 }
 
 function TextPlane({

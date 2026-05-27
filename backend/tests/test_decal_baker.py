@@ -67,6 +67,54 @@ def test_prepare_stickers_rejects_remote_images(tmp_path: Path) -> None:
     assert exc.value.status_code == status.HTTP_400_BAD_REQUEST
 
 
+def test_prepare_stickers_resolves_uploaded_asset_id(tmp_path: Path) -> None:
+    service = decal_service()
+    service.asset_resolver = lambda asset_id: (b"\x89PNG\r\n\x1a\nasset-data", "image/png")
+    config = {
+        "stickers": [
+            {
+                "id": "uploaded",
+                "type": "image",
+                "source": "upload",
+                "assetId": "asset_001",
+                "position": [0, 0, 0],
+                "rotation": [0, 0, 0],
+                "scale": 0.2,
+            }
+        ]
+    }
+
+    stickers = service._prepare_stickers(tmp_path, config)
+
+    assert len(stickers) == 1
+    assert stickers[0]["mimeType"] == "image/png"
+    assert stickers[0]["imagePath"].endswith(".png")
+    assert Path(stickers[0]["imagePath"]).read_bytes().startswith(b"\x89PNG")
+
+
+def test_prepare_stickers_rejects_asset_id_without_resolver(tmp_path: Path) -> None:
+    service = decal_service()
+
+    with pytest.raises(HTTPException) as exc:
+        service._prepare_stickers(
+            tmp_path,
+            {
+                "stickers": [
+                    {
+                        "id": "uploaded",
+                        "type": "image",
+                        "assetId": "asset_001",
+                        "position": [0, 0, 0],
+                        "rotation": [0, 0, 0],
+                        "scale": 0.2,
+                    }
+                ]
+            },
+        )
+
+    assert exc.value.status_code == status.HTTP_400_BAD_REQUEST
+
+
 def test_prepare_decals_includes_text_svg_and_preserves_transform(tmp_path: Path) -> None:
     service = decal_service()
     config = {
@@ -97,6 +145,34 @@ def test_prepare_decals_includes_text_svg_and_preserves_transform(tmp_path: Path
     svg = Path(decals[0]["imagePath"]).read_text(encoding="utf-8")
     assert "A&amp;B" in svg
     assert "#123abc" in svg
+
+
+def test_prepare_decals_uses_render_asset_for_text_layer(tmp_path: Path) -> None:
+    service = decal_service()
+    service.asset_resolver = lambda asset_id: (b"\xff\xd8\xffjpeg-data", "image/jpeg")
+    config = {
+        "texts": [
+            {
+                "id": "text 001",
+                "value": "Canvas Font",
+                "font": "Impact",
+                "color": "#123abc",
+                "renderAssetId": "asset_text",
+                "position": [1, 2, 3],
+                "rotation": [0.1, 0.2, 0.3],
+                "scale": 0.4,
+            }
+        ]
+    }
+
+    decals = service._prepare_decals(tmp_path, config)
+
+    assert len(decals) == 1
+    assert decals[0]["id"] == "text_001"
+    assert decals[0]["kind"] == "image"
+    assert decals[0]["mimeType"] == "image/jpeg"
+    assert "text" not in decals[0]
+    assert Path(decals[0]["imagePath"]).read_bytes().startswith(b"\xff\xd8\xff")
 
 
 def test_prepare_decals_limits_combined_sticker_and_text_count(tmp_path: Path) -> None:
