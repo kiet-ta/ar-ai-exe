@@ -149,6 +149,19 @@ export const api = {
     return URL.createObjectURL(await response.blob());
   },
 
+  async fetchDesignPreviewBlobUrl(design: Design): Promise<string | null> {
+    if (!design.previewGlbUrl) {
+      return null;
+    }
+    const response = await fetch(`${API_BASE_URL}${design.previewGlbUrl}`, {
+      headers: authHeader(),
+    });
+    if (!response.ok) {
+      throw new ApiError(await errorMessage(response), response.status);
+    }
+    return URL.createObjectURL(await response.blob());
+  },
+
   async createDesign(modelAssetId: string, name: string, config: DesignConfig): Promise<Design> {
     return request<Design>("/api/designs", {
       method: "POST",

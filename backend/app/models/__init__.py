@@ -2,6 +2,7 @@
 
 from app.models.entities import (
     Design,
+    DesignPreviewStatus,
     DesignStatus,
     ExportPackage,
     ExportStatus,
@@ -14,6 +15,7 @@ from app.models.entities import (
 
 __all__ = [
     "Design",
+    "DesignPreviewStatus",
     "DesignStatus",
     "ExportPackage",
     "ExportStatus",

@@ -1,6 +1,6 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Response, status
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user
@@ -34,6 +34,17 @@ def get_design(
 ) -> DesignResponse:
     service = DesignService(db)
     return service.response(service.get_for_user(design_id, current_user))
+
+
+@router.get("/{design_id}/preview/glb")
+def get_design_preview_glb(
+    design_id: str,
+    current_user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_db)],
+) -> Response:
+    service = DesignService(db)
+    design = service.get_for_user(design_id, current_user)
+    return Response(content=service.preview_glb_bytes(design), media_type="model/gltf-binary")
 
 
 @router.put("/{design_id}", response_model=DesignResponse)

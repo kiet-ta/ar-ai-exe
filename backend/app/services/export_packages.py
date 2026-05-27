@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from app.core.config import get_settings
 from app.models import Design, DesignStatus, ExportPackage, ModelAsset, User
 from app.schemas.export import ExportPackageResponse
+from app.services.decal_baker import DecalBakeService
 from app.services.designs import DesignService
 from app.services.model_assets import ModelAssetService
 from app.services.placeholders import PLACEHOLDER_PNG
@@ -55,17 +56,19 @@ class ExportPackageService:
 
         model_service = ModelAssetService(self.db)
         design_service = DesignService(self.db)
+        design_config = design_service.read_config(design)
         glb_path.write_bytes(model_service.file_bytes(asset, "glb"))
         obj_path.write_bytes(model_service.file_bytes(asset, "obj"))
         mtl_path.write_bytes(model_service.file_bytes(asset, "mtl"))
         texture_path.write_bytes(model_service.file_bytes(asset, "texture"))
         design_config_path.write_text(
-            json.dumps(design_service.read_config(design), indent=2),
+            json.dumps(design_config, indent=2),
             encoding="utf-8",
         )
         self._write_measurements(asset, measurement_info_path)
         self._write_previews(preview_dir)
-        self._write_production_notes(design, production_notes_path)
+        decals_baked = DecalBakeService().bake(glb_path, export_dir, design_config)
+        self._write_production_notes(design, production_notes_path, decals_baked)
 
         zip_path = export_dir / f"{export_package.id}.zip"
         self._zip_export(export_dir, zip_path)
@@ -146,6 +149,7 @@ class ExportPackageService:
                 "final_shoe.obj",
                 "final_shoe.mtl",
                 "final_texture.png",
+                "stickers/*",
                 "preview_front.png",
                 "preview_side.png",
                 "preview_top.png",
@@ -196,7 +200,7 @@ class ExportPackageService:
                 "image/png",
             )
 
-    def _write_production_notes(self, design: Design, path: Path) -> None:
+    def _write_production_notes(self, design: Design, path: Path, decals_baked: bool = False) -> None:
         metadata = self._read_scan_metadata(design.model_asset)
         design_config = DesignService(self.db).read_config(design)
         shoe = metadata.get("shoe", {})
@@ -216,7 +220,8 @@ class ExportPackageService:
                     "summary": self._summary(design_config),
                     "targetAreas": ["manual_reference"],
                     "colorCodes": [design_config.get("baseColor", "#ffffff")],
-                    "notes": "Use preview images and design_config.json as manual customization reference.",
+                    "decalsBakedIntoModel": decals_baked,
+                    "notes": self._customization_notes(decals_baked),
                 },
                 "files": [
                     "final_shoe.glb",
@@ -238,6 +243,14 @@ class ExportPackageService:
             f"{sticker_count} sticker decal(s), and {text_count} text decal(s)."
         )
 
+    def _customization_notes(self, decals_baked: bool) -> str:
+        if decals_baked:
+            return (
+                "Sticker decals were exported as shrinkwrapped mesh overlays. "
+                "Use design_config.json for editable layer metadata."
+            )
+        return "Use preview images and design_config.json as manual customization reference."
+
     def _write_json(self, path: Path, payload: dict) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
@@ -246,5 +259,7 @@ class ExportPackageService:
         with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
             for path in export_dir.rglob("*"):
                 if path == zip_path or path.is_dir():
+                    continue
+                if "_work" in path.relative_to(export_dir).parts:
                     continue
                 archive.write(path, path.relative_to(export_dir))

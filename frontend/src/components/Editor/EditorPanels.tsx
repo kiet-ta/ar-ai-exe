@@ -1,5 +1,8 @@
-import { Download, ImagePlus, Save, Type } from "lucide-react";
+import { useState } from "react";
+import { Crosshair, Download, ImagePlus, Save, Type, Trash2, Move, RotateCcw, Maximize2 } from "lucide-react";
 
+import { stickerPresets } from "../../data/stickerPresets";
+import type { StickerPreset } from "../../data/stickerPresets";
 import type { DesignConfig, ExportPackage, ModelAsset } from "../../types";
 
 type EditorPanelsProps = {
@@ -8,8 +11,14 @@ type EditorPanelsProps = {
   designName: string;
   isSaving: boolean;
   exportPackage: ExportPackage | null;
+  activeLayerId: string | null;
+  meshBounds: { center: [number, number, number]; size: [number, number, number] } | null;
+  gizmoMode: "translate" | "rotate" | "scale";
   onNameChange: (name: string) => void;
   onConfigChange: (config: DesignConfig) => void;
+  onActiveLayerChange: (id: string | null) => void;
+  onApplyActiveLayerToSurface: () => void;
+  onGizmoModeChange: (mode: "translate" | "rotate" | "scale") => void;
   onSave: () => void;
   onExport: () => void;
   onDownload: () => void;
@@ -22,8 +31,14 @@ export function EditorPanels({
   designName,
   isSaving,
   exportPackage,
+  activeLayerId,
+  meshBounds,
+  gizmoMode,
   onNameChange,
   onConfigChange,
+  onActiveLayerChange,
+  onApplyActiveLayerToSurface,
+  onGizmoModeChange,
   onSave,
   onExport,
   onDownload,
@@ -38,7 +53,36 @@ export function EditorPanels({
     );
   }
 
+  const [activeCategory, setActiveCategory] = useState<string>("all");
+
   const update = (patch: Partial<DesignConfig>) => onConfigChange({ ...config, ...patch });
+
+  const activeSticker = config.stickers.find((s) => s.id === activeLayerId);
+  const activeText = config.texts.find((t) => t.id === activeLayerId);
+  const activeLayer = activeSticker || activeText;
+
+  function updateLayer(id: string, patch: any) {
+    if (activeSticker) {
+      update({
+        stickers: config!.stickers.map((s) => (s.id === id ? { ...s, ...patch } : s)),
+      });
+    } else if (activeText) {
+      update({
+        texts: config!.texts.map((t) => (t.id === id ? { ...t, ...patch } : t)),
+      });
+    }
+  }
+
+  function removeLayer(id: string) {
+    if (config!.stickers.find((s) => s.id === id)) {
+      update({ stickers: config!.stickers.filter((s) => s.id !== id) });
+    } else if (config!.texts.find((t) => t.id === id)) {
+      update({ texts: config!.texts.filter((t) => t.id !== id) });
+    }
+    if (activeLayerId === id) {
+      onActiveLayerChange(null);
+    }
+  }
 
   return (
     <aside className="editor-panel">
@@ -78,32 +122,84 @@ export function EditorPanels({
       </section>
 
       <section className="panel-section">
-        <h3>Decals</h3>
+        <h3>Decals & Text</h3>
+        <div className="decal-guidance">
+          <ImagePlus size={18} aria-hidden="true" />
+          <p>Thêm sticker hoặc text, kéo sát bề mặt giày nhất có thể, rồi bấm Save Draft để áp ảnh vào giày.</p>
+        </div>
         <div className="button-row">
-          <button type="button" onClick={() => onConfigChange(addSticker(config))}>
-            <ImagePlus size={16} aria-hidden="true" />
-            Sticker
-          </button>
-          <button type="button" onClick={() => onConfigChange(addText(config))}>
+          <button type="button" disabled={isSaving} onClick={() => {
+            const newConfig = addText(config, meshBounds);
+            onConfigChange(newConfig);
+            onActiveLayerChange(newConfig.texts[newConfig.texts.length - 1].id);
+          }}>
             <Type size={16} aria-hidden="true" />
-            Text
+            Add Text
           </button>
+        </div>
+        <div className="sticker-gallery-container">
+          <div className="category-tabs">
+            <button className={activeCategory === "all" ? "active" : ""} onClick={() => setActiveCategory("all")}>All</button>
+            <button className={activeCategory === "popular" ? "active" : ""} onClick={() => setActiveCategory("popular")}>Popular</button>
+            <button className={activeCategory === "symbols" ? "active" : ""} onClick={() => setActiveCategory("symbols")}>Symbols</button>
+            <button className={activeCategory === "nature" ? "active" : ""} onClick={() => setActiveCategory("nature")}>Nature</button>
+            <button className={activeCategory === "sport" ? "active" : ""} onClick={() => setActiveCategory("sport")}>Sport</button>
+          </div>
+          <div className="sticker-gallery">
+            {stickerPresets
+              .filter(p => activeCategory === "all" || p.category === activeCategory)
+              .map(preset => (
+                <button
+                  key={preset.id}
+                  className="sticker-card"
+                  title={preset.label}
+                  disabled={isSaving}
+                  onClick={() => {
+                    const newConfig = addSticker(config, preset, meshBounds);
+                    onConfigChange(newConfig);
+                    onActiveLayerChange(newConfig.stickers[newConfig.stickers.length - 1].id);
+                  }}
+                >
+                  <img src={preset.imageUrl} alt={preset.label} />
+                </button>
+              ))}
+          </div>
         </div>
       </section>
 
       <section className="panel-section">
         <h3>Layers</h3>
-        <div className="layer-list">
+        <div className="layer-list" onClick={(e) => {
+          if (e.target === e.currentTarget) onActiveLayerChange(null);
+        }}>
           {config.stickers.map((sticker) => (
-            <div className="layer-row" key={sticker.id}>
-              <span>{sticker.id}</span>
-              <span>sticker</span>
+            <div
+              className={`layer-row ${activeLayerId === sticker.id ? "active" : ""}`}
+              key={sticker.id}
+              onClick={() => onActiveLayerChange(sticker.id)}
+            >
+              <div className="layer-info">
+                <img src={sticker.imageUrl} className="sticker-thumb" alt="sticker" />
+                <span>{sticker.id}</span>
+              </div>
+              <button type="button" className="delete-btn" title="Delete layer" disabled={isSaving} onClick={(e) => { e.stopPropagation(); removeLayer(sticker.id); }}>
+                <Trash2 size={14} aria-hidden="true" />
+              </button>
             </div>
           ))}
           {config.texts.map((textLayer) => (
-            <div className="layer-row" key={textLayer.id}>
-              <span>{textLayer.value}</span>
-              <span>text</span>
+            <div
+              className={`layer-row ${activeLayerId === textLayer.id ? "active" : ""}`}
+              key={textLayer.id}
+              onClick={() => onActiveLayerChange(textLayer.id)}
+            >
+              <div className="layer-info">
+                <div className="color-swatch" style={{ backgroundColor: textLayer.color }} />
+                <span>{textLayer.value}</span>
+              </div>
+              <button type="button" className="delete-btn" title="Delete layer" disabled={isSaving} onClick={(e) => { e.stopPropagation(); removeLayer(textLayer.id); }}>
+                <Trash2 size={14} aria-hidden="true" />
+              </button>
             </div>
           ))}
           {config.stickers.length === 0 && config.texts.length === 0 ? (
@@ -112,12 +208,132 @@ export function EditorPanels({
         </div>
       </section>
 
+      {activeLayer && (
+        <section className="panel-section highlight">
+          <h3>Layer Properties</h3>
+          <div className="button-row gizmo-toolbar">
+            <button
+              type="button"
+              className={gizmoMode === "translate" ? "active" : ""}
+              disabled={isSaving}
+              onClick={() => onGizmoModeChange("translate")}
+              title="Move (3D)"
+            >
+              <Move size={16} />
+            </button>
+            <button
+              type="button"
+              className={gizmoMode === "rotate" ? "active" : ""}
+              disabled={isSaving}
+              onClick={() => onGizmoModeChange("rotate")}
+              title="Rotate (3D)"
+            >
+              <RotateCcw size={16} />
+            </button>
+            <button
+              type="button"
+              className={gizmoMode === "scale" ? "active" : ""}
+              disabled={isSaving}
+              onClick={() => onGizmoModeChange("scale")}
+              title="Scale (3D)"
+            >
+              <Maximize2 size={16} />
+            </button>
+            <button
+              type="button"
+              className="apply-surface-button"
+              disabled={isSaving}
+              onClick={onApplyActiveLayerToSurface}
+              title="Apply to surface"
+            >
+              <Crosshair size={16} />
+              Apply to surface
+            </button>
+          </div>
+          {activeText && (
+            <>
+              <label>
+                Text
+                <input
+                  value={activeText.value}
+                  disabled={isSaving}
+                  onChange={(e) =>
+                    updateLayer(activeLayer.id, {
+                      value: e.target.value,
+                      width: activeText.scale * textAspect(e.target.value),
+                    })
+                  }
+                />
+              </label>
+              <label className="color-picker-row">
+                Color
+                <div className="color-input-wrapper">
+                  <input
+                    type="color"
+                    value={activeText.color}
+                    disabled={isSaving}
+                    onChange={(e) => updateLayer(activeLayer.id, { color: e.target.value })}
+                  />
+                  <span>{activeText.color.toUpperCase()}</span>
+                </div>
+              </label>
+            </>
+          )}
+          <label>
+            Scale
+            <input
+              type="range"
+              min="0.05"
+              max="2"
+              step="0.05"
+              value={activeLayer.scale}
+              disabled={isSaving}
+              onChange={(e) => {
+                const scale = Number(e.target.value);
+                updateLayer(
+                  activeLayer.id,
+                  activeSticker
+                    ? {
+                        scale,
+                        width: scale,
+                        height: scale,
+                        projectionDepth: Math.max(activeSticker.projectionDepth ?? 0, scale * 3, 0.05),
+                      }
+                    : {
+                        scale,
+                        width: scale * textAspect(activeText?.value ?? ""),
+                        height: scale,
+                        projectionDepth: Math.max(activeText?.projectionDepth ?? 0, scale * 3, 0.05),
+                      },
+                );
+              }}
+            />
+          </label>
+          <label>
+            Rotation
+            <input
+              type="range"
+              min="-3.14"
+              max="3.14"
+              step="0.05"
+              value={activeLayer.rotation[2]}
+              disabled={isSaving}
+              onChange={(e) => {
+                const rot = [...activeLayer.rotation];
+                rot[2] = Number(e.target.value);
+                updateLayer(activeLayer.id, { rotation: rot as [number, number, number] });
+              }}
+            />
+          </label>
+        </section>
+      )}
+
       <section className="panel-section">
         <button className="primary-button" type="button" disabled={isSaving} onClick={onSave}>
           <Save size={16} aria-hidden="true" />
-          {isSaving ? "Saving" : "Save Draft"}
+          {isSaving ? "Applying..." : "Save Draft"}
         </button>
-        <button type="button" onClick={onExport}>
+        <button type="button" disabled={isSaving} onClick={onExport}>
           <Download size={16} aria-hidden="true" />
           Export Package
         </button>
@@ -171,8 +387,13 @@ export function EditorPanels({
   );
 }
 
-function addSticker(config: DesignConfig): DesignConfig {
+function addSticker(config: DesignConfig, preset: StickerPreset, meshBounds: { center: [number, number, number]; size: [number, number, number] } | null): DesignConfig {
   const index = config.stickers.length + 1;
+  const c = meshBounds ? meshBounds.center : [0, 0, 0];
+  const s = meshBounds ? meshBounds.size : [1, 1, 1];
+  const maxModelSize = Math.max(s[0], s[1], s[2]);
+  const stickerScale = maxModelSize * 0.15;
+
   return {
     ...config,
     stickers: [
@@ -180,17 +401,29 @@ function addSticker(config: DesignConfig): DesignConfig {
       {
         id: `sticker_${String(index).padStart(3, "0")}`,
         type: "image",
-        imageUrl: "/assets/stickers/flame.png",
-        position: [0.25, 0.45, 0.35],
-        rotation: [0, 0.35, 0],
-        scale: 0.35,
+        imageUrl: preset.imageUrl,
+        position: [c[0] + s[0] * 0.4, c[1], c[2]],
+        rotation: [0, 1.57, 0],
+        normal: [1, 0, 0],
+        targetMeshName: null,
+        scale: stickerScale,
+        width: stickerScale,
+        height: stickerScale,
+        offset: 0.004,
+        projectionDepth: Math.max(maxModelSize * 1.25, stickerScale * 2, 0.05),
+        subdivisions: 32,
       },
     ],
   };
 }
 
-function addText(config: DesignConfig): DesignConfig {
+function addText(config: DesignConfig, meshBounds: { center: [number, number, number]; size: [number, number, number] } | null): DesignConfig {
   const index = config.texts.length + 1;
+  const c = meshBounds ? meshBounds.center : [0, 0, 0];
+  const s = meshBounds ? meshBounds.size : [1, 1, 1];
+  const maxModelSize = Math.max(s[0], s[1], s[2]);
+  const scale = maxModelSize * 0.1;
+
   return {
     ...config,
     texts: [
@@ -199,11 +432,21 @@ function addText(config: DesignConfig): DesignConfig {
         id: `text_${String(index).padStart(3, "0")}`,
         value: "TAK",
         font: "Arial",
-        color: "#111111",
-        position: [-0.1, 0.48, 0.42],
-        rotation: [0, 0.35, 0],
-        scale: 0.22,
+        color: "#ffffff",
+        position: [c[0] + s[0] * 0.4, c[1] + s[1] * 0.1, c[2] + s[2] * 0.1],
+        rotation: [0, 1.57, 0],
+        scale: scale,
+        width: scale * 1.9,
+        height: scale,
+        offset: 0.004,
+        projectionDepth: Math.max(maxModelSize * 1.25, scale * 2, 0.05),
+        subdivisions: 32,
+        targetMeshName: null,
       },
     ],
   };
+}
+
+function textAspect(value: string): number {
+  return Math.max(value.trim().length * 0.62, 1);
 }
